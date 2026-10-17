@@ -72,7 +72,7 @@ Steps
    positives from qrels, negatives = top-50 candidates not judged relevant (ranks 1–3 skipped on NFCorpus,
    where unjudged ≠ non-relevant), 7 train/dev queries whose text equals a test query removed.
    Output under `data/` (derived from BEIR, not committed).
-5. ◐ **Fine-tuning** (Kaggle GPU; script ready and smoke-tested on CPU, see `docs/kaggle-training.md`): `scripts/train_reranker.py` (sentence-transformers CrossEncoder, BCE,
+5. ✅ **Fine-tuning** (done: listwise on SciFact only is the one that works, C2 kept; ablation in `reports/m2-reranking.md`): `scripts/train_reranker.py` (sentence-transformers CrossEncoder, BCE,
    1–2 epochs, fixed seed), start from MiniLM-L6 (cheap to serve) then bge-reranker-base if time allows;
    early stopping on NFCorpus dev; model card in `models/<name>/README.md`, weights not committed.
 6. **Serving cost**: ONNX export + dynamic int8 quantization (Optimum), latency for 50 passages at batch

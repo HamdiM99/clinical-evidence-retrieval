@@ -107,7 +107,72 @@ level (+0.003 at best); SciFact degrades throughout (down to 0.553). Hypotheses,
 (C) conflicting notions of relevance: 89 % of the pairs are NFCorpus (broad topical relevance), while
 SciFact needs the evidence for one claim.
 
+## Fine-tuning, ablation: what makes it work
+
+Same base model, data, validation and selection rule; one change per run (Kaggle T4, `docs/kaggle-training.md`).
+Validation nDCG@10 of the best checkpoint (step 0 = base model, kept when never beaten):
+
+| run | change | NFCorpus dev | SciFact train[:200] | mean | best step |
+|---|---|---|---|---|---|
+| first stage (hybrid, no re-ranking) | – | 0.3222 | 0.7497 | 0.5359 | – |
+| base MiniLM | – | 0.3306 | 0.7302 | 0.5304 | – |
+| 1 | BCE, lr 2e-5, both datasets | = base | = base | = base | 0 / 2935 |
+| A | BCE, **lr 5e-6** | = base | = base | = base | 0 / 2935 |
+| B | **listwise** (1 pos + 7 hard neg, softmax), lr 1e-5, both | 0.3245 | 0.7434 | 0.5340 | 2500 / 4786 |
+| C1 | listwise, **NFCorpus only** | = base | = base | = base | 0 / 4271 |
+| C2 | listwise, **SciFact only** (608 claims) | **0.3317** | **0.7495** | **0.5406** | 400 / 516 |
+
+- **NFCorpus training data is what fails**, not the learning rate or the loss: trained alone on NFCorpus
+  (C1), the model never improves on NFCorpus; mixed in (runs 1, A, B) it degrades SciFact. NFCorpus train
+  labels are broad (≈ 40 "relevant" documents per query, derived from links): they do not teach a
+  cross-encoder already trained on MS MARCO anything it does not know, and pull it away from precise
+  evidence matching. A lower learning rate (A) only delays the SciFact collapse (from step ≈ 750).
+- **The listwise objective helps** (B > A with the same data) but does not compensate for the labels.
+- **C2 is the only clear gain**: 608 SciFact claims, 3 minutes on a T4. It removes the SciFact regression of
+  the off-the-shelf model (0.730 → 0.750) without forgetting NFCorpus (0.331 → 0.332).
+- Caveat: on SciFact, C2 reaches the level of the first stage **without** re-ranking (0.750), so its gain
+  over "no re-ranking" comes from NFCorpus (as for the base model). C2 was selected among 10 evaluations of
+  the same 200 queries: the validation gain is optimistic, test decides.
+
+Decision rule for test, fixed before running it: C2 is kept as the custom re-ranker if it is not
+significantly worse than hybrid RRF on either dataset **and** beats the base MiniLM on SciFact.
+
+## Custom re-ranker C2 on test (reported once)
+
+Local replay of the downloaded checkpoint first reproduces the Kaggle validation exactly (NFCorpus dev
+0.3317, SciFact train[:200] 0.7495). Then test, top_n = 20:
+
+| dataset | hybrid RRF | + MiniLM (MS MARCO) | + C2 (fine-tuned on SciFact) |
+|---|---|---|---|
+| NFCorpus nDCG@10 | 0.3528 | 0.3615 | **0.3629** |
+| NFCorpus MRR@10 | 0.5596 | 0.5877 | 0.5861 |
+| SciFact nDCG@10 | **0.7298** | 0.7013 | 0.7288 |
+| SciFact MRR@10 | 0.6970 | 0.6721 | **0.6988** |
+
+Paired permutation tests (10,000 permutations), C2 minus reference:
+
+| dataset | vs | Δ nDCG@10 | p | Δ MRR@10 | p | Δ MAP@100 | p | win / loss / tie |
+|---|---|---|---|---|---|---|---|---|
+| NFCorpus | hybrid | +0.010 | 0.098 | +0.027 | 0.082 | +0.006 | 0.123 | 106 / 86 / 131 |
+| NFCorpus | MiniLM | +0.001 | 0.607 | −0.002 | 0.804 | −0.001 | 0.797 | 72 / 62 / 189 |
+| SciFact | hybrid | −0.001 | 0.952 | +0.002 | 0.928 | +0.003 | 0.893 | 62 / 52 / 186 |
+| SciFact | MiniLM | **+0.028** | **0.002** | **+0.027** | **0.010** | **+0.028** | **0.004** | 53 / 23 / 224 |
+
+**Decision (rule above): C2 is kept** — not significantly worse than hybrid on either dataset, and
+significantly better than the off-the-shelf MiniLM on SciFact.
+
+What the numbers support, and what they do not:
+- Fine-tuning on 608 in-domain claims with a listwise loss **fixes the domain mismatch** of the MS MARCO
+  model on SciFact (+0.028 nDCG@10, p = 0.002) and keeps its NFCorpus behaviour (Δ +0.001).
+- No re-ranker beats hybrid RRF significantly on either dataset: on NFCorpus the gain is +0.010
+  (p ≈ 0.1), on SciFact C2 is level with the first stage. With 300 queries per test set, effects of
+  ≈ 0.01 nDCG@10 are below what this protocol can detect.
+- Recall@100 is unchanged (re-ranking the top 20 only): NFCorpus stays capped at 0.30 by the first stage.
+- Cost: same architecture as MiniLM (22M parameters), so the same serving cost. Wall-clock re-ranking
+  time on this laptop varied between runs (≈ 1.1 s vs ≈ 1.7 s p50 for 20 passages) with machine load;
+  serving latency is measured in a controlled benchmark (step 6), not from these replays.
+
 ## Next
 
 - `BAAI/bge-reranker-base` with the same protocol (≈ 6× slower on CPU: GPU notebook or overnight run).
-- Fine-tuned cross-encoder (steps 4–5), ONNX serving cost (step 6).
+- ONNX export + int8 quantization of C2 and a controlled latency benchmark (step 6).
