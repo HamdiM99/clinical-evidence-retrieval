@@ -203,7 +203,31 @@ Controlled latency on this laptop (`scripts/bench_reranker.py` → [rerank-laten
 - A first benchmark run was discarded: the laptop went to sleep in the middle of it (Windows power log);
   the numbers above come from a clean re-run with sleep prevented.
 
+## GPU latency: does re-ranking fit the budget?
+
+Tesla T4 (Kaggle), full table in [rerank-latency-gpu.md](rerank-latency-gpu.md). Total per query (CPU
+tokenization + GPU forward), p50 / p95 in ms, against the ≈ 100 ms re-ranking share of the p95 < 300 ms budget:
+
+| model | precision | 20 passages | 50 passages | 100 passages |
+|---|---|---|---|---|
+| MiniLM-L6 (= C2) | fp32 | 49 / 61 | 125 / 128 | 263 / 271 |
+| MiniLM-L6 (= C2) | **fp16** | **25 / 27** | **60 / 63** | 115 / 125 |
+| bge-reranker-base | fp32 | 277 / 280 | 750 / 785 | 1465 / 1576 |
+| bge-reranker-base | **fp16** | 76 / 79 | 194 / 197 | 391 / 403 |
+| *laptop CPU, C2 int8 (for reference)* | int8 | *953 / 1022* | *2165 / 2617* | – |
+
+- **C2 in fp16 on a T4 fits the budget with margin**: 27 ms p95 at the chosen `top_n = 20`, 63 ms at 50.
+  ≈ 38× faster than the laptop CPU in int8.
+- **fp16 is the main GPU lever**: 2–4× over fp32 (tensor cores), MiniLM model time 34.7 → 11.4 ms at 20.
+- **bge-reranker-base fits only at top 20 in fp16** (79 ms p95), and is 3–6× costlier than MiniLM at equal
+  depth: a quality gain would have to be large to justify it.
+- **Tokenization becomes the bottleneck**: for MiniLM fp16 it is more than half of the time (14 of 25 ms at
+  20 passages, 33 of 60 at 50), on CPU and linear in the number of passages. Lever for serving: tokenize the
+  passages once at indexing time and store the token ids with the chunk, so only the query is tokenized online.
+- Throughput (estimate, not load-tested): one query at top 20 occupies the GPU ≈ 11 ms, so a single T4 can
+  serve ≈ 50 req/s at top 20 if requests are batched and tokenization runs on several CPU workers; to be
+  verified with the M3 load test.
+
 ## Next
 
 - `BAAI/bge-reranker-base` with the same protocol (≈ 6× slower on CPU: GPU notebook or overnight run).
-- GPU latency (T4, fp16) for MiniLM and bge-reranker-base to close the latency budget question.
