@@ -1,0 +1,476 @@
+{
+  "nfcorpus/bm25": {
+    "ndcg@10": 0.2958,
+    "recall@100": 0.2358,
+    "mrr@10": 0.4902,
+    "map@100": 0.1336,
+    "p50_ms": 62.2
+  },
+  "nfcorpus/dense": {
+    "ndcg@10": 0.327,
+    "recall@100": 0.2797,
+    "mrr@10": 0.5263,
+    "map@100": 0.1478,
+    "p50_ms": 129.6
+  },
+  "nfcorpus/hybrid": {
+    "ndcg@10": 0.3528,
+    "recall@100": 0.3013,
+    "mrr@10": 0.5596,
+    "map@100": 0.1629,
+    "p50_ms": 127.3
+  },
+  "nfcorpus/hybrid-minilm-top20": {
+    "ndcg@10": 0.3615,
+    "recall@100": 0.3013,
+    "mrr@10": 0.5877,
+    "map@100": 0.169,
+    "p50_ms": 1262.8
+  },
+  "nfcorpus/hybrid-c2-top20": {
+    "ndcg@10": 0.3629,
+    "recall@100": 0.3013,
+    "mrr@10": 0.5861,
+    "map@100": 0.1684,
+    "p50_ms": 1804.5
+  },
+  "scifact/bm25": {
+    "ndcg@10": 0.6191,
+    "recall@100": 0.9042,
+    "mrr@10": 0.5832,
+    "map@100": 0.5793,
+    "p50_ms": 75.7
+  },
+  "scifact/dense": {
+    "ndcg@10": 0.7035,
+    "recall@100": 0.93,
+    "mrr@10": 0.6733,
+    "map@100": 0.6657,
+    "p50_ms": 143.0
+  },
+  "scifact/hybrid": {
+    "ndcg@10": 0.7298,
+    "recall@100": 0.9483,
+    "mrr@10": 0.697,
+    "map@100": 0.69,
+    "p50_ms": 150.2
+  },
+  "scifact/hybrid-minilm-top20": {
+    "ndcg@10": 0.7013,
+    "recall@100": 0.9483,
+    "mrr@10": 0.6721,
+    "map@100": 0.6649,
+    "p50_ms": 1316.4
+  },
+  "scifact/hybrid-c2-top20": {
+    "ndcg@10": 0.7288,
+    "recall@100": 0.9483,
+    "mrr@10": 0.6988,
+    "map@100": 0.6925,
+    "p50_ms": 1949.3
+  },
+  "n_queries": {
+    "nfcorpus": 323,
+    "scifact": 300
+  },
+  "chunks": {
+    "nfcorpus": 4811,
+    "scifact": 6428
+  },
+  "train_stats": {
+    "train_pairs": 93909,
+    "positives_share": 0.204,
+    "valid_queries": 524,
+    "valid_top_n": 20,
+    "datasets": {
+      "nfcorpus": {
+        "queries": 2582,
+        "skipped_excluded": 0,
+        "skipped_leak": 8,
+        "skipped_no_pos": 0,
+        "positives": 17081,
+        "hard_positives": 9798,
+        "negatives": 66523,
+        "pairs": 83604,
+        "repeat": 1,
+        "params": {
+          "max_pos": 8,
+          "neg_per_pos": 4,
+          "depth": 50,
+          "skip_top": 3,
+          "seed": 13
+        }
+      },
+      "scifact": {
+        "queries": 608,
+        "skipped_excluded": 0,
+        "skipped_leak": 1,
+        "skipped_no_pos": 0,
+        "positives": 687,
+        "hard_positives": 641,
+        "negatives": 2748,
+        "pairs": 3435,
+        "repeat": 3,
+        "params": {
+          "max_pos": 8,
+          "neg_per_pos": 4,
+          "depth": 50,
+          "skip_top": 0,
+          "seed": 13
+        }
+      }
+    },
+    "seed": 13,
+    "timestamp": "2026-10-17T11:43:10"
+  },
+  "recall_at": {
+    "nfcorpus": {
+      "10": 0.1722,
+      "20": 0.2069,
+      "50": 0.2511,
+      "100": 0.3013
+    },
+    "scifact": {
+      "10": 0.8518,
+      "20": 0.8792,
+      "50": 0.9292,
+      "100": 0.9483
+    }
+  },
+  "topn": {
+    "nfcorpus": {
+      "fused": 0.3222,
+      "20": 0.3308,
+      "50": 0.3286,
+      "100": 0.3276
+    },
+    "scifact": {
+      "fused": 0.7497,
+      "20": 0.7301,
+      "50": 0.7232,
+      "100": 0.7216
+    }
+  },
+  "ablation": {
+    "nfcorpus": {
+      "1": 0.0,
+      "A": 0.0,
+      "B": -0.0061,
+      "C1": 0.0,
+      "C2": 0.0011
+    },
+    "scifact": {
+      "1": 0.0,
+      "A": 0.0,
+      "B": 0.0132,
+      "C1": -0.0,
+      "C2": 0.0193
+    }
+  },
+  "forest": {
+    "nfcorpus/minilm-hybrid": {
+      "delta": 0.008711689177619894,
+      "p": 0.15648435156484353,
+      "ci": [
+        -0.0030902574576634066,
+        0.02063589687308105
+      ],
+      "n": 323
+    },
+    "nfcorpus/c2-hybrid": {
+      "delta": 0.010045666533292214,
+      "p": 0.09819018098190181,
+      "ci": [
+        -0.0017042910685700465,
+        0.02189993498668847
+      ],
+      "n": 323
+    },
+    "nfcorpus/c2-minilm": {
+      "delta": 0.0013339773556723202,
+      "p": 0.6073392660733926,
+      "ci": [
+        -0.0036908424658402728,
+        0.006397447269217988
+      ],
+      "n": 323
+    },
+    "scifact/minilm-hybrid": {
+      "delta": -0.028450429486340748,
+      "p": 0.055394460553944605,
+      "ci": [
+        -0.056576584342547434,
+        6.103145917523237e-06
+      ],
+      "n": 300
+    },
+    "scifact/c2-hybrid": {
+      "delta": -0.0009537763016845442,
+      "p": 0.9523047695230477,
+      "ci": [
+        -0.030320103524083358,
+        0.027950234172976304
+      ],
+      "n": 300
+    },
+    "scifact/c2-minilm": {
+      "delta": 0.027496653184656217,
+      "p": 0.0021997800219978004,
+      "ci": [
+        0.010289312028214684,
+        0.04448491519443697
+      ],
+      "n": 300
+    }
+  },
+  "gpu": [
+    {
+      "model": "ms-marco-MiniLM-L-6-v2",
+      "precision": "fp32",
+      "passages": 20,
+      "batch": 20,
+      "tok": 14.2,
+      "model_ms": 34.7,
+      "p50": 48.8,
+      "p95": 60.5
+    },
+    {
+      "model": "ms-marco-MiniLM-L-6-v2",
+      "precision": "fp32",
+      "passages": 50,
+      "batch": 50,
+      "tok": 33.0,
+      "model_ms": 91.7,
+      "p50": 125.1,
+      "p95": 128.2
+    },
+    {
+      "model": "ms-marco-MiniLM-L-6-v2",
+      "precision": "fp32",
+      "passages": 100,
+      "batch": 100,
+      "tok": 64.2,
+      "model_ms": 197.7,
+      "p50": 262.8,
+      "p95": 271.2
+    },
+    {
+      "model": "ms-marco-MiniLM-L-6-v2",
+      "precision": "fp32",
+      "passages": 100,
+      "batch": 32,
+      "tok": 70.1,
+      "model_ms": 201.6,
+      "p50": 273.5,
+      "p95": 285.8
+    },
+    {
+      "model": "ms-marco-MiniLM-L-6-v2",
+      "precision": "fp16",
+      "passages": 20,
+      "batch": 20,
+      "tok": 13.9,
+      "model_ms": 11.4,
+      "p50": 25.4,
+      "p95": 26.6
+    },
+    {
+      "model": "ms-marco-MiniLM-L-6-v2",
+      "precision": "fp16",
+      "passages": 50,
+      "batch": 50,
+      "tok": 33.4,
+      "model_ms": 26.5,
+      "p50": 59.7,
+      "p95": 63.1
+    },
+    {
+      "model": "ms-marco-MiniLM-L-6-v2",
+      "precision": "fp16",
+      "passages": 100,
+      "batch": 100,
+      "tok": 63.7,
+      "model_ms": 52.4,
+      "p50": 114.5,
+      "p95": 125.0
+    },
+    {
+      "model": "ms-marco-MiniLM-L-6-v2",
+      "precision": "fp16",
+      "passages": 100,
+      "batch": 32,
+      "tok": 67.9,
+      "model_ms": 57.8,
+      "p50": 124.8,
+      "p95": 133.4
+    },
+    {
+      "model": "bge-reranker-base",
+      "precision": "fp32",
+      "passages": 20,
+      "batch": 20,
+      "tok": 13.5,
+      "model_ms": 262.7,
+      "p50": 276.6,
+      "p95": 279.5
+    },
+    {
+      "model": "bge-reranker-base",
+      "precision": "fp32",
+      "passages": 50,
+      "batch": 50,
+      "tok": 29.8,
+      "model_ms": 720.6,
+      "p50": 750.3,
+      "p95": 785.1
+    },
+    {
+      "model": "bge-reranker-base",
+      "precision": "fp32",
+      "passages": 100,
+      "batch": 100,
+      "tok": 55.5,
+      "model_ms": 1408.1,
+      "p50": 1465.4,
+      "p95": 1576.1
+    },
+    {
+      "model": "bge-reranker-base",
+      "precision": "fp32",
+      "passages": 100,
+      "batch": 32,
+      "tok": 60.9,
+      "model_ms": 1485.0,
+      "p50": 1551.1,
+      "p95": 1607.3
+    },
+    {
+      "model": "bge-reranker-base",
+      "precision": "fp16",
+      "passages": 20,
+      "batch": 20,
+      "tok": 12.5,
+      "model_ms": 63.2,
+      "p50": 75.8,
+      "p95": 78.8
+    },
+    {
+      "model": "bge-reranker-base",
+      "precision": "fp16",
+      "passages": 50,
+      "batch": 50,
+      "tok": 29.6,
+      "model_ms": 163.7,
+      "p50": 193.7,
+      "p95": 196.5
+    },
+    {
+      "model": "bge-reranker-base",
+      "precision": "fp16",
+      "passages": 100,
+      "batch": 100,
+      "tok": 55.9,
+      "model_ms": 336.6,
+      "p50": 391.0,
+      "p95": 403.2
+    },
+    {
+      "model": "bge-reranker-base",
+      "precision": "fp16",
+      "passages": 100,
+      "batch": 32,
+      "tok": 60.8,
+      "model_ms": 348.3,
+      "p50": 406.8,
+      "p95": 420.1
+    }
+  ],
+  "cpu": [
+    {
+      "backend": "PyTorch fp32",
+      "passages": 20,
+      "batch_size": 20,
+      "p50_ms": 1273.3701500001189,
+      "p95_ms": 2139.8863549984526
+    },
+    {
+      "backend": "PyTorch fp32",
+      "passages": 50,
+      "batch_size": 16,
+      "p50_ms": 3385.782900000777,
+      "p95_ms": 4292.601319997266
+    },
+    {
+      "backend": "PyTorch fp32",
+      "passages": 50,
+      "batch_size": 32,
+      "p50_ms": 4402.418850000686,
+      "p95_ms": 4652.909790003832
+    },
+    {
+      "backend": "PyTorch fp32",
+      "passages": 50,
+      "batch_size": 50,
+      "p50_ms": 4181.87465000301,
+      "p95_ms": 4638.328984997497
+    },
+    {
+      "backend": "ONNX Runtime fp32",
+      "passages": 20,
+      "batch_size": 20,
+      "p50_ms": 1482.0680500015442,
+      "p95_ms": 1912.1400300024106
+    },
+    {
+      "backend": "ONNX Runtime fp32",
+      "passages": 50,
+      "batch_size": 16,
+      "p50_ms": 3364.567150001676,
+      "p95_ms": 4339.823280000928
+    },
+    {
+      "backend": "ONNX Runtime fp32",
+      "passages": 50,
+      "batch_size": 32,
+      "p50_ms": 3518.5231499999645,
+      "p95_ms": 4710.232635002831
+    },
+    {
+      "backend": "ONNX Runtime fp32",
+      "passages": 50,
+      "batch_size": 50,
+      "p50_ms": 3912.4024499978987,
+      "p95_ms": 6325.812964998113
+    },
+    {
+      "backend": "ONNX Runtime int8 (dynamic)",
+      "passages": 20,
+      "batch_size": 20,
+      "p50_ms": 953.1285999983083,
+      "p95_ms": 1021.5987349994975
+    },
+    {
+      "backend": "ONNX Runtime int8 (dynamic)",
+      "passages": 50,
+      "batch_size": 16,
+      "p50_ms": 2370.291150000412,
+      "p95_ms": 2673.358290000033
+    },
+    {
+      "backend": "ONNX Runtime int8 (dynamic)",
+      "passages": 50,
+      "batch_size": 32,
+      "p50_ms": 2326.0398999991594,
+      "p95_ms": 2585.246700004427
+    },
+    {
+      "backend": "ONNX Runtime int8 (dynamic)",
+      "passages": 50,
+      "batch_size": 50,
+      "p50_ms": 2164.793900003133,
+      "p95_ms": 2617.066949999571
+    }
+  ],
+  "cpu_hw": "Intel(R) Core(TM) i7-8565U CPU @ 1.80GHz, 4 threads, no GPU",
+  "cpu_versions": "torch 2.14.1+cpu, onnxruntime 1.31.0, transformers 5.20.1"
+}

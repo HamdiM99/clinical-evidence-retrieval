@@ -14,8 +14,8 @@ how deep (`top_n`), trained how, served how, within the ≈ 100 ms re-ranking sh
 - **Behind a flag:** re-ranking is optional per request/config, so the first stage alone stays a valid mode.
 
 ## Rationale (measured)
-- Off-the-shelf MS MARCO MiniLM **hurts** SciFact (−0.029 nDCG@10 vs hybrid, p = 0.055); C2 removes that
-  (+0.028 vs off-the-shelf, p = 0.002) and keeps NFCorpus (+0.001).
+- Off-the-shelf MS MARCO MiniLM **hurts** SciFact (−0.028 nDCG@10 vs hybrid, p = 0.055); C2 removes that
+  (+0.027 vs off-the-shelf, p = 0.002) and keeps NFCorpus (+0.001).
 - Fine-tuning works only with clean in-domain labels and a ranking objective: pointwise BCE and the broad
   NFCorpus labels never beat the base model (ablation of learning rate, loss and data mix).
 - Deeper re-ranking (`top_n` 50, 100) never helped and costs 2.5–5× more.

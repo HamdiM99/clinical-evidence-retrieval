@@ -42,7 +42,7 @@ Paired permutation test vs hybrid RRF (10,000 permutations):
 | dataset | Δ nDCG@10 | p | Δ MRR@10 | p | Δ MAP@100 | p | per query (win / loss / tie) |
 |---|---|---|---|---|---|---|---|
 | NFCorpus | +0.009 | 0.157 | +0.028 | 0.067 | +0.006 | 0.063 | 106 / 91 / 126 |
-| SciFact | −0.029 | 0.055 | −0.025 | 0.178 | −0.025 | 0.153 | 48 / 62 / 190 |
+| SciFact | −0.028 | 0.055 | −0.025 | 0.178 | −0.025 | 0.153 | 48 / 62 / 190 |
 
 ### Reading
 
@@ -156,14 +156,14 @@ Paired permutation tests (10,000 permutations), C2 minus reference:
 | NFCorpus | hybrid | +0.010 | 0.098 | +0.027 | 0.082 | +0.006 | 0.123 | 106 / 86 / 131 |
 | NFCorpus | MiniLM | +0.001 | 0.607 | −0.002 | 0.804 | −0.001 | 0.797 | 72 / 62 / 189 |
 | SciFact | hybrid | −0.001 | 0.952 | +0.002 | 0.928 | +0.003 | 0.893 | 62 / 52 / 186 |
-| SciFact | MiniLM | **+0.028** | **0.002** | **+0.027** | **0.010** | **+0.028** | **0.004** | 53 / 23 / 224 |
+| SciFact | MiniLM | **+0.027** | **0.002** | **+0.027** | **0.010** | **+0.028** | **0.004** | 53 / 23 / 224 |
 
 **Decision (rule above): C2 is kept** — not significantly worse than hybrid on either dataset, and
 significantly better than the off-the-shelf MiniLM on SciFact.
 
 What the numbers support, and what they do not:
 - Fine-tuning on 608 in-domain claims with a listwise loss **fixes the domain mismatch** of the MS MARCO
-  model on SciFact (+0.028 nDCG@10, p = 0.002) and keeps its NFCorpus behaviour (Δ +0.001).
+  model on SciFact (+0.027 nDCG@10, p = 0.002) and keeps its NFCorpus behaviour (Δ +0.001).
 - No re-ranker beats hybrid RRF significantly on either dataset: on NFCorpus the gain is +0.010
   (p ≈ 0.1), on SciFact C2 is level with the first stage. With 300 queries per test set, effects of
   ≈ 0.01 nDCG@10 are below what this protocol can detect.
