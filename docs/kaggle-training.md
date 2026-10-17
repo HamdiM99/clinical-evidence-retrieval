@@ -100,3 +100,25 @@ so that the comparison isolates the effect of fine-tuning.
 
 The model directory contains `README.md` (model card), `training_info.json` and `train_log.jsonl`;
 weights are not committed. Publishing them (e.g. Hugging Face Hub) is a separate decision.
+
+## 5. GPU latency benchmark (optional)
+
+Latency depends on the architecture, not on the weights: the fine-tuned C2 has the architecture of
+`cross-encoder/ms-marco-MiniLM-L-6-v2`, so `scripts/bench_reranker_gpu.py` benchmarks the base models from the
+Hub (MiniLM-L6 and bge-reranker-base, fp32 and fp16) on real first-stage passages.
+
+```powershell
+.\.venv\Scripts\python.exe scripts/bench_reranker_gpu.py --export runs/nfcorpus-hybrid/candidates-dev.jsonl --passages data/rerank-train/bench_passages.jsonl
+Copy-Item scripts/bench_reranker_gpu.py data/rerank-train/
+```
+
+Add both files to the Kaggle dataset (New Version), then in a GPU notebook:
+
+```python
+import glob, os
+D = os.path.dirname(glob.glob("/kaggle/input/**/bench_reranker_gpu.py", recursive=True)[0])
+!python {D}/bench_reranker_gpu.py --passages {D}/bench_passages.jsonl --out /kaggle/working/gpu_latency.json
+```
+
+It prints a markdown table (tokenization on CPU, forward pass on GPU, total p50/p95 per query) and writes
+`gpu_latency.json`; copy it to `reports/` to keep the measured numbers with the repository.

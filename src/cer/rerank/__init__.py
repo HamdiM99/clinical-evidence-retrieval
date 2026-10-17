@@ -38,4 +38,7 @@ class CrossEncoderReranker:
 
 
 def build_reranker(cfg: RerankConfig) -> Reranker:
+    if cfg.type == "onnx":
+        from cer.rerank.onnx import OnnxReranker
+        return OnnxReranker(cfg)
     return CrossEncoderReranker(cfg)

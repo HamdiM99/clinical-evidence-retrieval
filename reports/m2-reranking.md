@@ -172,7 +172,38 @@ What the numbers support, and what they do not:
   time on this laptop varied between runs (≈ 1.1 s vs ≈ 1.7 s p50 for 20 passages) with machine load;
   serving latency is measured in a controlled benchmark (step 6), not from these replays.
 
+## Serving cost: ONNX export and int8 quantization (step 6)
+
+`cer export-onnx models/C2-listwise-scifact models/C2-listwise-scifact-onnx` writes an ONNX fp32 model and a
+dynamically quantized int8 copy (weights int8, activations quantized at run time, no calibration data).
+
+| | size | scores vs PyTorch (30 queries × 20 passages) | validation nDCG@10 NFCorpus dev / SciFact train[:200] |
+|---|---|---|---|
+| PyTorch fp32 | 86.7 MB | – | 0.3317 / 0.7495 |
+| ONNX fp32 | 86.7 MB | max abs diff 1e-5, Kendall τ 1.000, same top 10 on 30/30 | identical |
+| ONNX int8 | **21.9 MB** | mean abs diff 0.18, τ 0.937, same top-10 set on 21/30 | **0.3325 / 0.7512** |
+
+Int8 moves the scores but not the ranking quality: the validation differences (+0.001, +0.002) are well
+inside the noise.
+
+Controlled latency on this laptop (`scripts/bench_reranker.py` → [rerank-latency.md](rerank-latency.md): same
+30 queries, warm-up excluded, 4 threads, nothing else running):
+
+| backend | 20 passages p50 / p95 | 50 passages p50 / p95 (best batch) | pairs/s |
+|---|---|---|---|
+| PyTorch fp32 | 1273 / 2140 ms | 3386 / 4293 ms | ≈ 12–14 |
+| ONNX Runtime fp32 | 1482 / 1912 ms | 3365 / 4340 ms | ≈ 11–14 |
+| ONNX Runtime int8 | **953 / 1022 ms** | **2165 / 2617 ms** | ≈ 21–22 |
+
+- Exporting to ONNX alone brings nothing on this CPU; **int8 brings ≈ 1.3–1.9× throughput, a much tighter
+  p95 and 4× smaller weights, at no measured quality cost.** Batch size barely matters on CPU (compute bound).
+- Even in int8, re-ranking 20 passages takes ≈ 1 s on a 15 W laptop CPU: an order of magnitude above the
+  ≈ 100 ms re-ranking budget (DESIGN §9). This machine is not a serving target; the budget has to be met on a
+  GPU or on server CPUs, measured separately (`scripts/bench_reranker_gpu.py`, Kaggle T4).
+- A first benchmark run was discarded: the laptop went to sleep in the middle of it (Windows power log);
+  the numbers above come from a clean re-run with sleep prevented.
+
 ## Next
 
 - `BAAI/bge-reranker-base` with the same protocol (≈ 6× slower on CPU: GPU notebook or overnight run).
-- ONNX export + int8 quantization of C2 and a controlled latency benchmark (step 6).
+- GPU latency (T4, fp16) for MiniLM and bge-reranker-base to close the latency budget question.

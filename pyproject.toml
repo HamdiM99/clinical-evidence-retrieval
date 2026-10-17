@@ -21,6 +21,7 @@ dependencies = [
 
 [project.optional-dependencies]
 embed = ["sentence-transformers>=3.0"]
+onnx = ["onnxruntime>=1.18", "onnx>=1.16", "onnxscript>=0.2"]
 dev = ["pytest>=8", "ranx>=0.3.19", "ruff>=0.5"]
 
 [project.scripts]

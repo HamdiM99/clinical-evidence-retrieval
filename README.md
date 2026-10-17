@@ -30,7 +30,7 @@ See [ROADMAP.md](ROADMAP.md).
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
-make setup          # pip install -e ".[embed,dev]"
+make setup          # pip install -e ".[embed,dev]"   (add ",onnx" for the ONNX re-ranker)
 make test           # 25 tests, no Elasticsearch, no model download
 
 make up             # Elasticsearch 8.15 in Docker (single node, security off: local dev only)

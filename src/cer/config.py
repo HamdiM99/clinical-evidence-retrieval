@@ -47,12 +47,13 @@ class RetrievalConfig(BaseModel):
 
 
 class RerankConfig(BaseModel):
-    type: Literal["cross-encoder"] = "cross-encoder"
+    type: Literal["cross-encoder", "onnx"] = "cross-encoder"   # onnx: directory with model.onnx + tokenizer
     model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     top_n: int = 50                    # fused documents re-scored; the rest keep their fused order
     max_length: int = 256              # tokens for (query, passage); 512 roughly doubles the cost
     batch_size: int = 16
     device: str | None = None
+    threads: int | None = None         # CPU threads (ONNX Runtime); None = runtime default
 
 
 class EvalConfig(BaseModel):

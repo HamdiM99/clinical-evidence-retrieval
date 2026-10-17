@@ -75,9 +75,9 @@ Steps
 5. ✅ **Fine-tuning** (done: listwise on SciFact only is the one that works, C2 kept; ablation in `reports/m2-reranking.md`): `scripts/train_reranker.py` (sentence-transformers CrossEncoder, BCE,
    1–2 epochs, fixed seed), start from MiniLM-L6 (cheap to serve) then bge-reranker-base if time allows;
    early stopping on NFCorpus dev; model card in `models/<name>/README.md`, weights not committed.
-6. **Serving cost**: ONNX export + dynamic int8 quantization (Optimum), latency for 50 passages at batch
+6. ✅ **Serving cost** (int8: 4× smaller, ≈ 1.3–1.9× faster on CPU, no quality loss; GPU point pending): ONNX export + dynamic int8 quantization (Optimum), latency for 50 passages at batch
    16/32/50 on this CPU and on the notebook GPU, compared with the ≈ 100 ms re-ranking budget (DESIGN §9).
-7. **Report**: hybrid vs + MiniLM vs + bge vs + custom (nDCG@10, Recall@100 unchanged by construction,
+7. ✅ **Report**: hybrid vs + MiniLM vs + bge vs + custom (nDCG@10, Recall@100 unchanged by construction,
    p-values vs hybrid), latency per model; `reports/m2-reranking.md`, ADR-004.
 
 Expectations, to read results honestly: in the BEIR paper an MS MARCO cross-encoder on BM25 top-100 gains
@@ -91,10 +91,10 @@ relevant documents can be moved up. The in-domain fine-tuned model is where a re
   collapse: that is the point of the experiment), with and without re-ranking.
 
 Exit criteria
-- [ ] re-ranker table (baseline vs custom, ONNX latency); significant gain on ≥ 1 dataset or an honest
+- [x] re-ranker table (baseline vs custom, ONNX latency); significant gain on ≥ 1 dataset or an honest
       explanation of why not
 - [ ] FR → EN table
-- [ ] ADR-004 (re-ranker choice and serving)
+- [x] ADR-004 (re-ranker choice and serving)
 - [ ] tag `v0.2`
 
 ---

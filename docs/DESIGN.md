@@ -242,3 +242,4 @@ See [ROADMAP.md](../ROADMAP.md) for details.
 - [ADR-001 Client-side RRF over `_msearch`](adr/001-client-side-rrf.md)
 - [ADR-002 Elasticsearch as the single retrieval engine](adr/002-elasticsearch.md)
 - [ADR-003 Evaluation protocol](adr/003-evaluation-protocol.md)
+- [ADR-004 Re-ranker choice and serving](adr/004-reranker.md)

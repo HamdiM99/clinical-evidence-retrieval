@@ -86,6 +86,8 @@ def rerank(candidates_file: Path,
            model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2",
            top_n: Annotated[list[int] | None, typer.Option(help="one run per value (default 50)")] = None,
            max_length: int = 256, batch_size: int = 16, device: str | None = None,
+           rerank_type: Annotated[str, typer.Option("--type", help="cross-encoder (HF model) or onnx (exported dir)")] = "cross-encoder",
+           threads: int | None = None,
            limit: Annotated[int | None, typer.Option(help="first N queries only (debugging)")] = None,
            quiet: bool = False):
     """Re-rank exported candidates (scores cached once at max top_n), one run per top_n in runs/."""
@@ -93,7 +95,8 @@ def rerank(candidates_file: Path,
     from cer.rerank.replay import cache_path, rerank_run, score_candidates
 
     top_ns = top_n or [50]
-    cfg = RerankConfig(model=model, top_n=max(top_ns), max_length=max_length, batch_size=batch_size, device=device)
+    cfg = RerankConfig(type=rerank_type, model=model, top_n=max(top_ns), max_length=max_length, batch_size=batch_size,
+                       device=device, threads=threads)
     cache = cache_path(candidates_file, cfg)
 
     class LazyReranker:  # the model is loaded only if the cache must be (re)computed
@@ -111,6 +114,17 @@ def rerank(candidates_file: Path,
         typer.echo(json.dumps({"name": s["name"], **{k: round(v, 4) for k, v in s["metrics"].items()},
                                "rerank_p50_ms": round(lt["p50"], 1), "rerank_latency": s["rerank_latency"],
                                "cache": str(cache)}))
+
+
+@app.command("export-onnx")
+def export_onnx_cmd(model_dir: Path, out_dir: Path, int8: bool = typer.Option(True, help="also write <out>-int8")):
+    """Export a cross-encoder to ONNX (fp32) and, by default, a dynamically quantized int8 copy."""
+    from cer.rerank.onnx import export_onnx, quantize_onnx
+
+    fp32 = export_onnx(model_dir, out_dir)
+    typer.echo(f"fp32: {fp32}")
+    if int8:
+        typer.echo(f"int8: {quantize_onnx(fp32, out_dir.parent / (out_dir.name + '-int8'))}")
 
 
 @app.command()
