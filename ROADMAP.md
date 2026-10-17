@@ -68,7 +68,7 @@ Steps
 3. ◐ **Off-the-shelf baselines** (MiniLM done: top_n 20, no significant gain, see `reports/m2-reranking.md`; bge pending): `cross-encoder/ms-marco-MiniLM-L-6-v2` (CPU, ≈ 35 min for both test sets
    at top_n 50) and `BAAI/bge-reranker-base` (GPU notebook, or CPU overnight). `top_n` and `max_length`
    chosen on NFCorpus dev / a SciFact train subset, never on test.
-4. **Training data with hard negatives**: `scripts/build_rerank_train.py` from train candidates —
+4. ✅ **Training data with hard negatives**: `scripts/build_rerank_train.py` from train candidates —
    positives from qrels, negatives = top-50 candidates not judged relevant (ranks 1–3 skipped on NFCorpus,
    where unjudged ≠ non-relevant), 7 train/dev queries whose text equals a test query removed.
    Output under `data/` (derived from BEIR, not committed).

@@ -60,6 +60,28 @@ Paired permutation test vs hybrid RRF (10,000 permutations):
 - Consequence for the next steps: the case for **in-domain fine-tuning** (claims and nutrition queries,
   hard negatives from our own retriever) is now measured, not assumed.
 
+## Training data for the custom re-ranker
+
+Built by `scripts/build_rerank_train.py` from the train candidates of the hybrid first stage
+(`data/rerank-train/`, derived from BEIR, not committed; counts in `stats.json`).
+
+| | NFCorpus train | SciFact train (minus 200 held out) |
+|---|---|---|
+| queries used | 2,582 | 608 |
+| removed: text identical to a test or validation query | 8 | 1 |
+| positives (max 8 per query) | 17,081, of which 9,798 retrieved in the top 50 | 687, of which 641 retrieved |
+| hard negatives (top 50, not judged relevant) | 66,523, ranks 1–3 skipped | 2,748 |
+| pairs | 83,604 | 3,435 × 3 (repeated to balance) |
+
+- Train qrels have a single grade (1) on both datasets: binary labels.
+- Negatives are the highest-ranked non-relevant candidates (hardest first), 4 per positive. On NFCorpus the
+  top 3 are skipped because judgments are incomplete (≈ 40 relevant documents per query, derived from
+  links, so a top-ranked unjudged document is often relevant); SciFact links each claim to its source.
+- Positives not retrieved by the first stage use their document's first chunk: the model also learns
+  from relevant documents the retriever misses (43 % of NFCorpus positives).
+- Validation = the tuning sets of step 3 (NFCorpus dev 324 queries, SciFact train[:200]), with their
+  first-stage top 20 and qrels; checked: no train query (id or text) in test or validation.
+
 ## Next
 
 - `BAAI/bge-reranker-base` with the same protocol (≈ 6× slower on CPU: GPU notebook or overnight run).
