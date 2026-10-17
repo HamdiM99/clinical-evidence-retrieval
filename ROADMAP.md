@@ -51,18 +51,38 @@ Exit criteria
 ## M2 — Re-ranking and cross-lingual retrieval (priority)
 
 ### 2.1 Re-ranking (`src/cer/rerank/`)
-- Interface `Reranker.rerank(query, passages) -> scores`; applied to the top `rerank.top_n` (default 50)
-  passages after fusion; final score = re-ranker score.
-- Baselines (off the shelf): `cross-encoder/ms-marco-MiniLM-L-6-v2`, `BAAI/bge-reranker-base`.
-- **Custom re-ranker**: fine-tune a cross-encoder (MiniLM or bge-reranker-base) on the train splits of
-  NFCorpus + SciFact with **hard negatives mined by our own hybrid retriever** (top-50 minus positives),
-  script `scripts/train_reranker.py` (sentence-transformers CrossEncoder, BCE loss, 1–3 epochs, fixed seed,
-  model card in `models/<name>/README.md`, weights not committed). GPU recommended (Colab/Kaggle).
-  Check that no test query (or near-duplicate) appears in the training data.
-- Export to **ONNX** (+ dynamic int8 quantization) with Optimum; benchmark latency for 50 passages on CPU
-  (and GPU if available), batch sizes 16/32/50.
-- Measure: hybrid vs hybrid + baseline re-ranker vs hybrid + custom re-ranker (nDCG@10, p-values) and the
-  latency cost of each.
+
+Measured constraint (laptop CPU, i7-8565U): re-ranking 50 passages (~220 words, truncated to 256 tokens)
+takes ≈ 3.3 s with MiniLM-L6 and ≈ 16 s with bge-reranker-base (512 tokens: 7 s / 27 s). Hence:
+re-ranking is **replayed offline on exported candidates** (no Elasticsearch needed, runs on CPU or on a
+GPU notebook), quality and latency are reported separately, and fine-tuning runs on a free GPU (Kaggle).
+
+Steps
+1. ✅ **Candidate export**: `cer candidates <config> --split train|dev|test` → `runs/<name>/candidates-<split>.jsonl`
+   (query, top-100 fused documents with ranks, RRF score and best passage). One retrieval pass, then any
+   number of re-ranking experiments (`top_n`, `max_length`, model) on the same candidates.
+2. **Reranker interface**: `Reranker.score(query, passages) -> scores`, cross-encoder backend
+   (sentence-transformers), `cer rerank <candidates> --model --top-n --max-length` → `runs/<name>/` with
+   the same files as `cer eval` (run.trec, metrics.json, per_query.csv) + re-ranking time per query.
+   Documents below `top_n` keep their fused order. Unit tests with a fake reranker.
+3. **Off-the-shelf baselines**: `cross-encoder/ms-marco-MiniLM-L-6-v2` (CPU, ≈ 35 min for both test sets
+   at top_n 50) and `BAAI/bge-reranker-base` (GPU notebook, or CPU overnight). `top_n` and `max_length`
+   chosen on NFCorpus dev / a SciFact train subset, never on test.
+4. **Training data with hard negatives**: `scripts/build_rerank_train.py` from train candidates —
+   positives from qrels, negatives = top-50 candidates not judged relevant (ranks 1–3 skipped on NFCorpus,
+   where unjudged ≠ non-relevant), 7 train/dev queries whose text equals a test query removed.
+   Output under `data/` (derived from BEIR, not committed).
+5. **Fine-tuning** (Kaggle GPU): `scripts/train_reranker.py` (sentence-transformers CrossEncoder, BCE,
+   1–2 epochs, fixed seed), start from MiniLM-L6 (cheap to serve) then bge-reranker-base if time allows;
+   early stopping on NFCorpus dev; model card in `models/<name>/README.md`, weights not committed.
+6. **Serving cost**: ONNX export + dynamic int8 quantization (Optimum), latency for 50 passages at batch
+   16/32/50 on this CPU and on the notebook GPU, compared with the ≈ 100 ms re-ranking budget (DESIGN §9).
+7. **Report**: hybrid vs + MiniLM vs + bge vs + custom (nDCG@10, Recall@100 unchanged by construction,
+   p-values vs hybrid), latency per model; `reports/m2-reranking.md`, ADR-004.
+
+Expectations, to read results honestly: in the BEIR paper an MS MARCO cross-encoder on BM25 top-100 gains
+only ≈ +0.02 nDCG@10 on NFCorpus and SciFact; NFCorpus Recall@100 is 0.30, so at most a third of the
+relevant documents can be moved up. The in-domain fine-tuned model is where a real gain is plausible.
 
 ### 2.2 Cross-lingual evaluation (FR → EN)
 - `data/fr-queries/<dataset>/queries.jsonl`: French versions of the test queries (machine translation,

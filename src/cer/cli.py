@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Annotated
 
 import typer
 
@@ -62,6 +63,22 @@ def eval_cmd(config: list[Path], quiet: bool = False):
         s = run_experiment(ExperimentConfig.from_yaml(c), progress=not quiet)
         typer.echo(json.dumps({"name": s["name"], **{k: round(v, 4) for k, v in s["metrics"].items()},
                                "p95_ms": round(s["latency_ms"]["total"]["p95"], 1)}))
+
+
+@app.command()
+def candidates(config: Path,
+               split: Annotated[list[str] | None, typer.Option(help="train, dev, test (default: config split)")] = None,
+               limit: Annotated[int | None, typer.Option(help="first N queries only (debugging)")] = None,
+               quiet: bool = False):
+    """Export first-stage candidates to runs/<name>/candidates-<split>.jsonl for offline re-ranking."""
+    from cer.eval.runner import build_retriever
+    from cer.rerank.candidates import export_candidates
+
+    cfg = ExperimentConfig.from_yaml(config)
+    retriever, backend, _ = build_retriever(cfg, progress=not quiet)  # load the model once for all splits
+    for s in split or [cfg.split]:
+        typer.echo(json.dumps(export_candidates(cfg, s, progress=not quiet, embedder=retriever.embedder,
+                                                backend=backend, limit=limit)))
 
 
 @app.command()

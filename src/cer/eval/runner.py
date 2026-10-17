@@ -49,20 +49,23 @@ def percentiles(values: list[float]) -> dict[str, float]:
             "p99": float(np.percentile(a, 99)), "mean": float(a.mean())}
 
 
-def run_experiment(cfg: ExperimentConfig, *, progress: bool = True, embedder=None, backend=None) -> dict:
-    ds = cfg.dataset_dir
-    queries, qrels = beir.load(ds, cfg.split)
+def build_retriever(cfg: ExperimentConfig, *, progress: bool = True, embedder=None, backend=None):
+    """(retriever, backend, ingest_info). The in-memory backend is indexed here; Elasticsearch already is."""
     needs_embedder = cfg.retrieval.mode in ("dense", "hybrid")
     embedder = embedder if embedder is not None else (build_embedder(cfg.embedder) if needs_embedder else None)
     backend = backend if backend is not None else build_backend(cfg.backend)
-
     ingest_info = None
-    if cfg.backend.type == "memory":  # in-process index: build it now
-        rep = ingest(beir.iter_corpus(ds), backend, embedder, version=cfg.backend.index_version,
+    if cfg.backend.type == "memory":
+        rep = ingest(beir.iter_corpus(cfg.dataset_dir), backend, embedder, version=cfg.backend.index_version,
                      max_words=cfg.chunking.max_words, overlap_words=cfg.chunking.overlap_words,
                      batch_size=cfg.embedder.batch_size, progress=progress)
         ingest_info = rep.__dict__
-    retriever = Retriever(backend, embedder, cfg.retrieval)
+    return Retriever(backend, embedder, cfg.retrieval), backend, ingest_info
+
+
+def run_experiment(cfg: ExperimentConfig, *, progress: bool = True, embedder=None, backend=None) -> dict:
+    queries, qrels = beir.load(cfg.dataset_dir, cfg.split)
+    retriever, backend, ingest_info = build_retriever(cfg, progress=progress, embedder=embedder, backend=backend)
 
     run: dict[str, dict[str, float]] = {}
     lat: dict[str, list[float]] = {}

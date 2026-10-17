@@ -58,4 +58,5 @@ class DocResult:
     score: float
     best_chunk_id: str | None = None
     best_text: str = ""
+    best_title: str = ""
     ranks: dict[str, int] = field(default_factory=dict)  # rank in each retriever list (1-based)

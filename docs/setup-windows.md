@@ -26,6 +26,7 @@ Or everything at once: `powershell -ExecutionPolicy Bypass -File scripts\run_wee
 | `docker info` returns HTTP 500 / hangs right after installing WSL | WSL installed but Windows not rebooted yet | reboot |
 | Re-running `cer ingest` with the same `index_version` deleted the index the alias was serving | `create_index` dropped any existing index of that name | the served index is now protected: bump `backend.index_version` (an unserved leftover of an interrupted build is still rebuilt) |
 | Integration test cleanup failed: `Wildcard expressions or all indices are not allowed` | Elasticsearch 8 sets `action.destructive_requires_name=true` | delete test indexes by explicit name |
+| Elasticsearch unreachable the next morning (`cer-es` exited with code 255, no OOM) | Docker Desktop / WSL restarted (sleep, update) and the container had no restart policy | `restart: unless-stopped` in `docker-compose.yml`; indexes live on the `esdata` volume and survive |
 
 ## Timings on this machine
 

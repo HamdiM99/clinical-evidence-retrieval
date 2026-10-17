@@ -54,6 +54,7 @@ class Retriever:
         ranks = {name: {d: i for i, (d, _) in enumerate(lst, start=1)} for name, lst in lists.items()}
         ordered = sorted(scores, key=lambda d: (-scores[d], d))[: cfg.top_k]
         results = [DocResult(doc_id=d, score=scores[d], best_chunk_id=best[d].chunk_id, best_text=best[d].text,
+                             best_title=best[d].title,
                              ranks={n: ranks[n][d] for n in ranks if d in ranks[n]}) for d in ordered]
         t3 = time.perf_counter()
         t["embed"], t["search"], t["fusion"], t["total"] = (
