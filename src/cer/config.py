@@ -46,6 +46,15 @@ class RetrievalConfig(BaseModel):
     top_k: int = 100                   # documents returned after fusion
 
 
+class RerankConfig(BaseModel):
+    type: Literal["cross-encoder"] = "cross-encoder"
+    model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    top_n: int = 50                    # fused documents re-scored; the rest keep their fused order
+    max_length: int = 256              # tokens for (query, passage); 512 roughly doubles the cost
+    batch_size: int = 16
+    device: str | None = None
+
+
 class EvalConfig(BaseModel):
     metrics: list[str] = Field(default_factory=lambda: ["ndcg@10", "recall@100", "mrr@10", "map@100"])
     out_dir: str = "runs"
@@ -60,6 +69,7 @@ class ExperimentConfig(BaseModel):
     embedder: EmbedderConfig = Field(default_factory=EmbedderConfig)
     chunking: ChunkingConfig = Field(default_factory=ChunkingConfig)
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
+    rerank: RerankConfig | None = None
     eval: EvalConfig = Field(default_factory=EvalConfig)
 
     @property

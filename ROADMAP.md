@@ -61,7 +61,7 @@ Steps
 1. ✅ **Candidate export**: `cer candidates <config> --split train|dev|test` → `runs/<name>/candidates-<split>.jsonl`
    (query, top-100 fused documents with ranks, RRF score and best passage). One retrieval pass, then any
    number of re-ranking experiments (`top_n`, `max_length`, model) on the same candidates.
-2. **Reranker interface**: `Reranker.score(query, passages) -> scores`, cross-encoder backend
+2. ✅ **Reranker interface**: `Reranker.score(query, passages) -> scores`, cross-encoder backend
    (sentence-transformers), `cer rerank <candidates> --model --top-n --max-length` → `runs/<name>/` with
    the same files as `cer eval` (run.trec, metrics.json, per_query.csv) + re-ranking time per query.
    Documents below `top_n` keep their fused order. Unit tests with a fake reranker.

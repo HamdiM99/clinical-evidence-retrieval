@@ -1,7 +1,7 @@
 """Export first-stage candidates once, then replay any number of re-ranking experiments on them.
 
 runs/<name>/candidates-<split>.jsonl   one line per query:
-  {"qid", "query", "candidates": [{"doc_id", "rank", "score", "ranks", "chunk_id", "title", "text"}, ...]}
+  {"qid", "query", "timings_ms", "candidates": [{"doc_id", "rank", "score", "ranks", "chunk_id", "title", "text"}, ...]}
 runs/<name>/candidates-<split>.meta.json   config, index version, retrieval timings
 
 Re-ranking only reorders these lists, so Recall@top_k of a re-ranked run equals the first stage's
@@ -43,7 +43,9 @@ def export_candidates(cfg: ExperimentConfig, split: str | None = None, *, progre
             cands = [{"doc_id": r.doc_id, "rank": i, "score": r.score, "ranks": r.ranks,
                       "chunk_id": r.best_chunk_id, "title": r.best_title, "text": r.best_text}
                      for i, r in enumerate(res.results, start=1)]
-            f.write(json.dumps({"qid": qid, "query": queries[qid], "candidates": cands}, ensure_ascii=False) + "\n")
+            timings = {k: round(v, 2) for k, v in res.timings_ms.items()}
+            f.write(json.dumps({"qid": qid, "query": queries[qid], "timings_ms": timings, "candidates": cands},
+                               ensure_ascii=False) + "\n")
     meta = {"name": cfg.name, "dataset": cfg.dataset, "split": split, "n_queries": len(qids),
             "top_k": cfg.retrieval.top_k, "config": cfg.model_dump(mode="json"),
             "index": {"backend": cfg.backend.type, "alias": cfg.backend.alias,

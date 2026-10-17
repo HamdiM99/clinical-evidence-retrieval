@@ -82,6 +82,38 @@ def candidates(config: Path,
 
 
 @app.command()
+def rerank(candidates_file: Path,
+           model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2",
+           top_n: Annotated[list[int] | None, typer.Option(help="one run per value (default 50)")] = None,
+           max_length: int = 256, batch_size: int = 16, device: str | None = None,
+           limit: Annotated[int | None, typer.Option(help="first N queries only (debugging)")] = None,
+           quiet: bool = False):
+    """Re-rank exported candidates (scores cached once at max top_n), one run per top_n in runs/."""
+    from cer.config import RerankConfig
+    from cer.rerank.replay import cache_path, rerank_run, score_candidates
+
+    top_ns = top_n or [50]
+    cfg = RerankConfig(model=model, top_n=max(top_ns), max_length=max_length, batch_size=batch_size, device=device)
+    cache = cache_path(candidates_file, cfg)
+
+    class LazyReranker:  # the model is loaded only if the cache must be (re)computed
+        name = model
+
+        def score(self, query, passages):
+            from cer.rerank import build_reranker
+            self.score = build_reranker(cfg).score
+            return self.score(query, passages)
+
+    score_candidates(candidates_file, LazyReranker(), cfg, depth=max(top_ns), limit=limit, progress=not quiet)
+    for n in top_ns:
+        s = rerank_run(candidates_file, cfg.model_copy(update={"top_n": n}), limit=limit)
+        lt = s["latency_ms"]["rerank"]
+        typer.echo(json.dumps({"name": s["name"], **{k: round(v, 4) for k, v in s["metrics"].items()},
+                               "rerank_p50_ms": round(lt["p50"], 1), "rerank_latency": s["rerank_latency"],
+                               "cache": str(cache)}))
+
+
+@app.command()
 def compare(run_a: Path, run_b: Path, qrels_dir: Path, split: str = "test", metric: str = "ndcg@10"):
     """Paired permutation test between two run files."""
     from cer.data.beir import load_qrels
@@ -107,21 +139,24 @@ def replace_block(text: str, block: str) -> str:
 
 
 @app.command()
-def report(runs_dir: Path = Path("runs"), out: Path = Path("reports/results.md"), readme: Path = Path("README.md")):
-    """Collect runs/*/metrics.json into one markdown table (also written between the README result markers)."""
+def report(runs_dir: Path = Path("runs"), out: Path = Path("reports/results.md"), readme: Path = Path("README.md"),
+           split: str = "test"):
+    """Collect runs/*/metrics.json of one split into a markdown table (also written between the README markers)."""
     rows = []
     for m in sorted(runs_dir.glob("*/metrics.json")):
         s = json.loads(m.read_text(encoding="utf-8"))
-        rows.append(s)
+        if s.get("split", "test") == split:
+            rows.append(s)
     if not rows:
         raise typer.Exit("no runs found")
     metrics = list(rows[0]["metrics"])
     lines = ["| run | dataset | " + " | ".join(metrics) + " | p50 ms | p95 ms |",
              "|---|---|" + "---|" * (len(metrics) + 2)]
     for s in rows:
-        lt = s["latency_ms"]["total"]
+        lt = s["latency_ms"].get("total")
+        ms = f"{lt['p50']:.1f} | {lt['p95']:.1f}" if lt else "– | –"
         lines.append(f"| {s['name']} | {s['dataset']} | " + " | ".join(f"{s['metrics'][k]:.4f}" for k in metrics)
-                     + f" | {lt['p50']:.1f} | {lt['p95']:.1f} |")
+                     + f" | {ms} |")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")
     if readme.exists() and README_START in (text := readme.read_text(encoding="utf-8")):
