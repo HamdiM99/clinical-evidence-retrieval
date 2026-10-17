@@ -65,7 +65,7 @@ Steps
    (sentence-transformers), `cer rerank <candidates> --model --top-n --max-length` → `runs/<name>/` with
    the same files as `cer eval` (run.trec, metrics.json, per_query.csv) + re-ranking time per query.
    Documents below `top_n` keep their fused order. Unit tests with a fake reranker.
-3. **Off-the-shelf baselines**: `cross-encoder/ms-marco-MiniLM-L-6-v2` (CPU, ≈ 35 min for both test sets
+3. ◐ **Off-the-shelf baselines** (MiniLM done: top_n 20, no significant gain, see `reports/m2-reranking.md`; bge pending): `cross-encoder/ms-marco-MiniLM-L-6-v2` (CPU, ≈ 35 min for both test sets
    at top_n 50) and `BAAI/bge-reranker-base` (GPU notebook, or CPU overnight). `top_n` and `max_length`
    chosen on NFCorpus dev / a SciFact train subset, never on test.
 4. **Training data with hard negatives**: `scripts/build_rerank_train.py` from train candidates —
