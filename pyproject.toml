@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "clinical-evidence-retrieval"
+version = "0.1.0"
+description = "Hybrid retrieval platform for medical evidence: indexing, BM25 + vector search, fusion, re-ranking, evaluation."
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Mustapha HAMDI" }]
+dependencies = [
+  "numpy>=1.26",
+  "pydantic>=2.6",
+  "pyyaml>=6",
+  "typer>=0.12",
+  "elasticsearch>=8.13,<9",
+  "rank_bm25>=0.2.2",
+  "tqdm>=4.66",
+]
+
+[project.optional-dependencies]
+embed = ["sentence-transformers>=3.0"]
+dev = ["pytest>=8", "ranx>=0.3.19", "ruff>=0.5"]
+
+[project.scripts]
+cer = "cer.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+markers = ["integration: needs a running Elasticsearch (ES_URL)"]
+addopts = "-m 'not integration'"
+
+[tool.ruff]
+line-length = 110

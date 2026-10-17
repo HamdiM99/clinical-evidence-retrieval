@@ -1,0 +1,8 @@
+# No Elasticsearch, no model download: in-process BM25 + hashing "embeddings". Pipeline check only.
+name: smoke-nfcorpus-memory
+dataset: nfcorpus
+data_dir: data
+backend: {type: memory}
+embedder: {type: hashing, dim: 384, batch_size: 256}
+retrieval: {mode: hybrid}
+eval: {out_dir: runs}

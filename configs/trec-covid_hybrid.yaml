@@ -1,0 +1,27 @@
+name: trec-covid-hybrid
+dataset: trec-covid
+data_dir: data
+split: test
+backend:
+  type: elasticsearch
+  url: http://localhost:9200
+  alias: cer-trec-covid
+  index_version: 1
+embedder:
+  type: sentence-transformers
+  model: intfloat/multilingual-e5-base
+  batch_size: 64
+chunking:
+  max_words: 250
+  overlap_words: 40
+retrieval:
+  mode: hybrid
+  k_bm25: 100
+  k_knn: 100
+  num_candidates: 200
+  rrf_k: 60
+  weights: [1.0, 1.0]
+  top_k: 100
+eval:
+  metrics: [ndcg@10, recall@100, mrr@10, map@100]
+  out_dir: runs
