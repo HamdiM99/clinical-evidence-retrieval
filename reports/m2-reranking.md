@@ -82,6 +82,31 @@ Built by `scripts/build_rerank_train.py` from the train candidates of the hybrid
 - Validation = the tuning sets of step 3 (NFCorpus dev 324 queries, SciFact train[:200]), with their
   first-stage top 20 and qrels; checked: no train query (id or text) in test or validation.
 
+## Fine-tuning, run 1: pointwise BCE (no gain)
+
+`scripts/train_reranker.py`, base `cross-encoder/ms-marco-MiniLM-L-6-v2`, both datasets, pointwise BCE,
+lr 2e-5 (10 % warm-up, linear decay), 32 pairs per step, 1 epoch (2,935 steps), Kaggle Tesla T4, ≈ 6 min.
+Validation nDCG@10 at top 20 (step 0 = base model; it equals the step-3 tuning numbers to 4 decimals,
+so the notebook evaluation and the local replay agree):
+
+| step | NFCorpus dev | SciFact train[:200] | mean |
+|---|---|---|---|
+| first stage (hybrid) | 0.3222 | 0.7497 | 0.5359 |
+| 0 (base MiniLM) | 0.3306 | 0.7302 | **0.5304** |
+| 500 | 0.2990 | 0.6622 | 0.4806 |
+| 1000 | 0.3031 | 0.5528 | 0.4279 |
+| 1500 | 0.3244 | 0.6711 | 0.4977 |
+| 2000 | 0.3258 | 0.6817 | 0.5037 |
+| 2500 | 0.3335 | 0.6913 | 0.5124 |
+| 2935 | 0.3271 | 0.6635 | 0.4953 |
+
+No checkpoint beats the base model: the base model is kept. NFCorpus forgets then recovers to the base
+level (+0.003 at best); SciFact degrades throughout (down to 0.553). Hypotheses, tested next one at a time:
+(A) learning rate too high for an already good model (early drop); (B) the pointwise objective — absolute
+0/1 targets on noisy labels — instead of ranking the documents of one query against each other;
+(C) conflicting notions of relevance: 89 % of the pairs are NFCorpus (broad topical relevance), while
+SciFact needs the evidence for one claim.
+
 ## Next
 
 - `BAAI/bge-reranker-base` with the same protocol (≈ 6× slower on CPU: GPU notebook or overnight run).

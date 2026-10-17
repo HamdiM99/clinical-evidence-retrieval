@@ -21,8 +21,9 @@ script. These files are derived from BEIR datasets: keep the Kaggle dataset **pr
    internet access in notebooks.
 2. Datasets → New dataset → upload the four files of `data/rerank-train/`, visibility **Private**,
    name it e.g. `cer-rerank-train`.
-3. Code → New notebook → Settings: Accelerator **GPU T4** (or P100), Internet **On** (to download the
-   base model from Hugging Face), Add input → your dataset.
+3. From the dataset page → New notebook. Settings: Accelerator **GPU T4** (or P100), Internet **On** (to
+   download the base model from Hugging Face). Kaggle mounts the dataset under
+   `/kaggle/input/datasets/<user>/<dataset>/`: the cell below finds it.
 
 ## 3. Train
 
@@ -31,7 +32,9 @@ In a notebook cell:
 ```python
 !nvidia-smi --query-gpu=name,memory.total --format=csv
 !pip list 2>/dev/null | grep -E "^(torch|transformers) "
-D = "/kaggle/input/cer-rerank-train"
+import glob, os
+D = os.path.dirname(glob.glob("/kaggle/input/**/train_reranker.py", recursive=True)[0])
+print(D)   # e.g. /kaggle/input/datasets/<user>/cer-rerank-train
 !python {D}/train_reranker.py --train {D}/train.jsonl --valid {D}/valid.jsonl \
     --base cross-encoder/ms-marco-MiniLM-L-6-v2 --out /kaggle/working/minilm-l6-nfc-scifact \
     --epochs 1 --batch-size 32 --lr 2e-5 --eval-every 500
@@ -44,6 +47,33 @@ for MiniLM it should be close to the step-3 tuning numbers (NFCorpus dev ≈ 0.3
 
 To let it run without keeping the browser open: **Save Version → Save & Run All**; outputs stay in the
 version's Output tab.
+
+### Ablation: loss, learning rate, dataset mix
+
+The first run above (pointwise BCE, lr 2e-5, both datasets) never beat the base model (see
+`reports/m2-reranking.md`). Four runs, each testing one hypothesis, ≈ 40 GPU minutes in total; selection on
+validation only:
+
+```python
+runs = {
+    "A-bce-lr5e6":          "--loss bce --lr 5e-6",
+    "B-listwise":           "--loss listwise --group-size 8 --lr 1e-5",
+    "C1-listwise-nfcorpus": "--loss listwise --group-size 8 --lr 1e-5 --only-dataset nfcorpus",
+    "C2-listwise-scifact":  "--loss listwise --group-size 8 --lr 1e-5 --only-dataset scifact --eval-every 50",
+}
+for name, extra in runs.items():
+    every = "" if "--eval-every" in extra else "--eval-every 250"
+    !python {D}/train_reranker.py --train {D}/train.jsonl --valid {D}/valid.jsonl         --base cross-encoder/ms-marco-MiniLM-L-6-v2 --out /kaggle/working/{name} --batch-size 32 {every} {extra}
+
+import json
+for name in runs:
+    i = json.load(open(f"/kaggle/working/{name}/training_info.json"))
+    print(name, "best step", i["best_step"], "/", i["steps"], "| selected on", i["select_on"],
+          "| best", {k: round(v, 4) for k, v in i["best"].items()})
+!cd /kaggle/working && for d in A-* B-* C1-* C2-*; do zip -qr $d.zip $d; done; ls -la /kaggle/working
+```
+
+Only download the zips whose best step is > 0 (a best step of 0 means the base model was kept).
 
 Optional, larger model (≈ 10× slower):
 

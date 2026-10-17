@@ -1,4 +1,4 @@
-"""Fine-tune a cross-encoder re-ranker on data/rerank-train (pointwise BCE on hard negatives).
+"""Fine-tune a cross-encoder re-ranker on data/rerank-train (pointwise BCE or listwise softmax, hard negatives).
 
 Self-contained on purpose (torch + transformers only, no import from this repo), so the same file runs on
 a GPU notebook (Kaggle, Colab) and locally. The saved directory is a standard Hugging Face sequence
@@ -77,6 +77,43 @@ def first_stage(valid: list[dict]) -> dict[str, float]:
     return res
 
 
+def make_groups(train: list[dict], group_size: int, rng: random.Random) -> list[list[dict]]:
+    """Listwise training groups: [positive, (group_size - 1) negatives of the same query].
+
+    One group per positive pair (repeated pairs give repeated groups, so dataset balancing is kept);
+    negatives are drawn from the query's distinct hard negatives, with replacement only if too few.
+    """
+    by_q: dict[tuple[str, str], dict] = {}
+    for p in train:
+        q = by_q.setdefault((p.get("dataset", ""), p["qid"]), {"pos": [], "neg": {}})
+        if p["label"] > 0:
+            q["pos"].append(p)
+        else:
+            q["neg"][p["doc_id"]] = p
+    groups = []
+    for key in sorted(by_q):
+        pos, neg = by_q[key]["pos"], list(by_q[key]["neg"].values())
+        if not neg:
+            continue
+        for p in pos:
+            k = group_size - 1
+            negs = rng.sample(neg, k) if len(neg) >= k else [rng.choice(neg) for _ in range(k)]
+            groups.append([p, *negs])
+    rng.shuffle(groups)
+    return groups
+
+
+def batches(train: list[dict], args, rng: random.Random) -> list[list[dict]]:
+    """One epoch of batches; a listwise batch is groups flattened, `batch_size` pairs per step."""
+    if args.loss == "listwise":
+        groups = make_groups(train, args.group_size, rng)
+        per = max(args.batch_size // args.group_size, 1)
+        return [[p for g in groups[i: i + per] for p in g] for i in range(0, len(groups), per)]
+    order = list(range(len(train)))
+    rng.shuffle(order)
+    return [[train[j] for j in order[i: i + args.batch_size]] for i in range(0, len(order), args.batch_size)]
+
+
 def model_card(args, info: dict) -> str:
     rows = "\n".join(f"| {k} | {info['first_stage'][k]:.4f} | {info['base'][k]:.4f} | {info['best'][k]:.4f} |"
                      for k in info["best"])
@@ -93,10 +130,11 @@ Cross-encoder re-ranker fine-tuned from `{args.base}` for medical evidence retri
   first-stage top {info['valid_top_n']} re-ranked.
 
 ## Training
-Pointwise binary cross-entropy on one logit, AdamW, lr {args.lr}, linear schedule with
-{args.warmup:.0%} warm-up, batch {args.batch_size}, {args.epochs} epoch(s), max length {args.max_length},
-seed {args.seed}, fp16 autocast on GPU. Best checkpoint at step {info['best_step']} of {info['steps']}
-by mean validation nDCG@10. Hardware: {info['hardware']}, {info['minutes']:.1f} min.
+{info['loss_text']}; training data: {args.only_dataset or 'both datasets'}. AdamW, lr {args.lr}, linear
+schedule with {args.warmup:.0%} warm-up, {args.batch_size} pairs per step, {args.epochs} epoch(s), max length
+{args.max_length}, seed {args.seed}, fp16 autocast on GPU. Best checkpoint at step {info['best_step']} of
+{info['steps']} by validation {info['select_on']} (step 0 = base model, kept if never beaten).
+Hardware: {info['hardware']}, {info['minutes']:.1f} min.
 
 ## Validation nDCG@10 (first-stage top {info['valid_top_n']} re-ranked)
 | set | first stage | base model | fine-tuned |
@@ -126,6 +164,10 @@ def main() -> None:
     ap.add_argument("--max-steps", type=int, default=None, help="stop early (smoke test)")
     ap.add_argument("--limit-train", type=int, default=None)
     ap.add_argument("--limit-valid", type=int, default=None)
+    ap.add_argument("--loss", choices=["bce", "listwise"], default="bce",
+                    help="bce: pointwise on each pair; listwise: softmax over 1 positive + negatives of a query")
+    ap.add_argument("--group-size", type=int, default=8, help="listwise: 1 positive + group_size - 1 negatives")
+    ap.add_argument("--only-dataset", default=None, help="train on one dataset; checkpoint selected on it")
     args = ap.parse_args()
 
     random.seed(args.seed)
@@ -133,18 +175,22 @@ def main() -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     hardware = torch.cuda.get_device_name(0) if device.type == "cuda" else f"CPU ({platform.processor() or 'unknown'})"
     train = read_jsonl(args.train, args.limit_train)
+    if args.only_dataset:
+        train = [p for p in train if p.get("dataset") == args.only_dataset]
     valid = read_jsonl(args.valid, args.limit_valid)
+    select_on = f"ndcg@10/{args.only_dataset}" if args.only_dataset else "ndcg@10/mean"
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
 
     tok = AutoTokenizer.from_pretrained(args.base)
     model = AutoModelForSequenceClassification.from_pretrained(args.base, num_labels=1).to(device)
-    steps_per_epoch = math.ceil(len(train) / args.batch_size)
-    total = min(args.max_steps or 10**12, steps_per_epoch * args.epochs)
+    rng = random.Random(args.seed)
+    epoch_batches = batches(train, args, rng)  # epoch 0; later epochs are re-drawn with the same rng
+    total = min(args.max_steps or 10**12, len(epoch_batches) * args.epochs)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.01)
     sched = get_linear_schedule_with_warmup(opt, int(args.warmup * total), total)
     scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
-    loss_fn = torch.nn.BCEWithLogitsLoss()
+    bce, ce = torch.nn.BCEWithLogitsLoss(), torch.nn.CrossEntropyLoss()
 
     log_path = out / "train_log.jsonl"
     log_path.write_text("", encoding="utf-8")
@@ -162,21 +208,23 @@ def main() -> None:
     tok.save_pretrained(out)
 
     t0, step = time.time(), 0
-    rng = random.Random(args.seed)
     for epoch in range(args.epochs):
-        order = list(range(len(train)))
-        rng.shuffle(order)
-        for i in range(0, len(order), args.batch_size):
+        if epoch > 0:
+            epoch_batches = batches(train, args, rng)
+        for batch in epoch_batches:
             if step >= total:
                 break
-            batch = [train[j] for j in order[i: i + args.batch_size]]
             model.train()
             enc = tok([b["query"] for b in batch], [b["passage"] for b in batch], truncation="longest_first",
                       max_length=args.max_length, padding=True, return_tensors="pt").to(device)
-            labels = torch.tensor([b["label"] for b in batch], dtype=torch.float32, device=device)
             with torch.autocast(device_type=device.type, enabled=device.type == "cuda"):
-                logits = model(**enc).logits.view(-1)
-            loss = loss_fn(logits.float(), labels)
+                logits = model(**enc).logits.view(-1).float()
+            if args.loss == "listwise":  # positive at index 0 of each group
+                logits = logits.view(-1, args.group_size)
+                loss = ce(logits, torch.zeros(logits.size(0), dtype=torch.long, device=device))
+            else:
+                labels = torch.tensor([b["label"] for b in batch], dtype=torch.float32, device=device)
+                loss = bce(logits, labels)
             opt.zero_grad(set_to_none=True)
             scaler.scale(loss).backward()
             scaler.unscale_(opt)
@@ -192,7 +240,7 @@ def main() -> None:
                 res = evaluate(model, tok, valid, args.max_length, args.eval_batch_size, device)
                 log({"step": step, "loss": loss.item(), **res})
                 print(json.dumps({"step": step, **{k: round(v, 4) for k, v in res.items()}}), flush=True)
-                if res["ndcg@10/mean"] > best["ndcg@10/mean"]:
+                if res[select_on] > best[select_on]:
                     best, best_step = res, step
                     model.save_pretrained(out)
                     tok.save_pretrained(out)
@@ -200,7 +248,10 @@ def main() -> None:
     info = {"first_stage": fs, "base": base, "best": best, "best_step": best_step, "steps": step,
             "n_train": len(train), "pos_share": sum(b["label"] for b in train) / max(len(train), 1),
             "n_valid": len(valid), "valid_top_n": len(valid[0]["candidates"]) if valid else 0,
-            "hardware": hardware, "minutes": (time.time() - t0) / 60}
+            "hardware": hardware, "minutes": (time.time() - t0) / 60, "select_on": select_on,
+            "loss_text": (f"Listwise softmax cross-entropy over groups of 1 positive + {args.group_size - 1} hard "
+                          f"negatives of the same query" if args.loss == "listwise"
+                          else "Pointwise binary cross-entropy on one logit")}
     (out / "training_info.json").write_text(json.dumps({**info, "args": vars(args)}, indent=2), encoding="utf-8")
     (out / "README.md").write_text(model_card(args, info), encoding="utf-8")
     print(json.dumps({"best_step": best_step, "best": best, "base": base}, indent=2))
