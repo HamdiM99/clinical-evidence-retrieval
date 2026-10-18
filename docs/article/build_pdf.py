@@ -209,8 +209,9 @@ P("TECHNICAL NOTE  ·  MEDICAL INFORMATION RETRIEVAL  ·  RE-RANKING", "kicker")
 P("Re-ranking: little gain, real risks", "title")
 P("Before you add a cross-encoder on top of hybrid retrieval: gains, risks and serving cost in biomedical "
   "search, measured from retrieval quality to serving cost.", "subtitle")
-P("Mustapha HAMDI  ·  October 2026  ·  Code, configs and run files: <i>clinical-evidence-retrieval</i> "
-  "(GitHub link added on publication)", "byline")
+REPO = "https://github.com/HamdiM99/clinical-evidence-retrieval"
+P(f"Mustapha HAMDI  ·  October 2026  ·  Code, configs and run files: "
+  f"<a href='{REPO}' color='#0F766E'><u>github.com/HamdiM99/clinical-evidence-retrieval</u></a>", "byline")
 
 tldr = [
     f"<b>Little gain.</b> No re-ranker beats the hybrid first stage significantly: C2 (fine-tuned) "
