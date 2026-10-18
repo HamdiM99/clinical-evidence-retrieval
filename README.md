@@ -89,7 +89,7 @@ Hybrid vs BM25 and dense (paired permutation test, 10,000 permutations, per-quer
 | scifact | hybrid vs bm25 | +0.111 | < 0.001 | +0.044 | < 0.001 |
 | scifact | hybrid vs dense | +0.026 | 0.050 | +0.018 | 0.105 |
 
-Analysis: [reports/week1.md](reports/week1.md) (baselines), [reports/m2-reranking.md](reports/m2-reranking.md) (re-ranking: an off-the-shelf MS MARCO MiniLM loses on SciFact; a MiniLM fine-tuned listwise on 608 SciFact claims removes that loss, +0.027 nDCG@10 vs the off-the-shelf model, p = 0.002, while no re-ranker beats hybrid RRF significantly).
+Analysis: [reports/week1.md](reports/week1.md) (baselines), [reports/m2-reranking.md](reports/m2-reranking.md) (re-ranking: no re-ranker beats hybrid RRF significantly; checked against the official SciFact annotations, the apparent SciFact losses and gains of re-rankers come from claims whose BEIR-relevant document holds no evidence). Technical write-up: [docs/article/reranking-little-gain-real-risks.pdf](docs/article/reranking-little-gain-real-risks.pdf).
 
 ## What each run produces
 

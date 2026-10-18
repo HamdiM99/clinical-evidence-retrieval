@@ -1,7 +1,7 @@
 """Build the article PDF from docs/article/figures (run make_figures.py first). Every number comes from
 figures/numbers.json, itself computed from the experiment artifacts.
 
-Usage: python docs/article/build_pdf.py  ->  docs/article/reranker-article.pdf
+Usage: python docs/article/build_pdf.py  ->  docs/article/reranking-little-gain-real-risks.pdf
 """
 from __future__ import annotations
 
@@ -22,7 +22,8 @@ from reportlab.platypus import (BaseDocTemplate, Frame, Image, KeepTogether, Pag
 HERE = Path(__file__).resolve().parent
 FIG = HERE / "figures"
 N = json.loads((FIG / "numbers.json").read_text(encoding="utf-8"))
-OUT = HERE / "reranker-article.pdf"
+OUT = HERE / "reranking-little-gain-real-risks.pdf"
+KR = json.loads((HERE / "data/kaggle_runs.json").read_text(encoding="utf-8"))
 
 FONTS = Path("C:/Windows/Fonts")
 pdfmetrics.registerFont(TTFont("Body", str(FONTS / "cambria.ttc"), subfontIndex=0))
@@ -172,14 +173,11 @@ def table(header: list[str], rows: list[list[str]], widths: list[float], caption
 
 # ============================================================================= numbers used in the text
 nf, sf = "nfcorpus", "scifact"
-hyb = {d: N[f"{d}/hybrid"] for d in (nf, sf)}
-bm = {d: N[f"{d}/bm25"] for d in (nf, sf)}
-den = {d: N[f"{d}/dense"] for d in (nf, sf)}
-mini = {d: N[f"{d}/hybrid-minilm-top20"] for d in (nf, sf)}
-c2 = {d: N[f"{d}/hybrid-c2-top20"] for d in (nf, sf)}
-fo = N["forest"]
+R = {d: {k: N[f"{d}/{k}"] for k in ("bm25", "dense", "hybrid", "minilm", "c2")} for d in (nf, sf)}
+cm = N["cmp"]
 ts = N["train_stats"]
-assert ts["datasets"]["scifact"]["queries"] == 608
+lb, r1, ev, ls = N["labels"], N["rank1"], N["evidence_ndcg"], N["label_split"]
+neg, i8, ex = N["negation"], N["int8"], N["examples"]
 gpu = {(r["model"], r["precision"], r["passages"], r["batch"]): r for r in N["gpu"]}
 mini16 = {n: gpu[("ms-marco-MiniLM-L-6-v2", "fp16", n, n)] for n in (20, 50, 100)}
 mini32 = {n: gpu[("ms-marco-MiniLM-L-6-v2", "fp32", n, n)] for n in (20, 50, 100)}
@@ -187,32 +185,52 @@ bge16 = {n: gpu[("bge-reranker-base", "fp16", n, n)] for n in (20, 50, 100)}
 cpu = {(r["backend"], r["passages"], r["batch_size"]): r for r in N["cpu"]}
 cpu_int8_20 = cpu[("ONNX Runtime int8 (dynamic)", 20, 20)]
 cpu_fp32_20 = cpu[("PyTorch fp32", 20, 20)]
-ab = N["ablation"]
-tn = N["topn"]
-ra = N["recall_at"]
+ab, tn, ra = N["ablation"], N["topn"], N["recall_at"]
+n_sf_claims = ts["datasets"]["scifact"]["queries"]
+n_nf_pairs = ts["datasets"]["nfcorpus"]["pairs"]
+pct = lambda a, b: f"{100 * a / b:.0f}%"
+
+
+def c(key: str) -> str:
+    """'+0.010 (p = 0.098)' for a test comparison."""
+    return f"{sg(cm[key]['delta'])} ({pv(cm[key]['p'])})"
+
+
+def ci(d: dict) -> str:
+    return f"[{sg(d['ci'][0])}, {sg(d['ci'][1])}]"
+
+
+def lsd(key: str) -> dict:
+    return ls[key]
+
 
 # ============================================================================= front matter
 P("TECHNICAL NOTE  ·  MEDICAL INFORMATION RETRIEVAL  ·  RE-RANKING", "kicker")
-P("When the Re-ranker Makes Things Worse", "title")
-P("Fine-tuning a cross-encoder for medical evidence retrieval: an ablation showing that label quality, "
-  "not model or learning rate, decides the outcome — and what it costs to serve.", "subtitle")
+P("Re-ranking: little gain, real risks", "title")
+P("Before you add a cross-encoder on top of hybrid retrieval: gains, risks and serving cost in biomedical "
+  "search, measured from retrieval quality to serving cost.", "subtitle")
 P("Mustapha HAMDI  ·  October 2026  ·  Code, configs and run files: <i>clinical-evidence-retrieval</i> "
   "(GitHub link added on publication)", "byline")
 
 tldr = [
-    f"An off-the-shelf MS MARCO cross-encoder placed after a strong hybrid retriever <b>lowers</b> nDCG@10 on "
-    f"SciFact ({sg(fo[f'{sf}/minilm-hybrid']['delta'])}, {pv(fo[f'{sf}/minilm-hybrid']['p'])}).",
-    "A first fine-tuning on our own hard negatives never beats the base model. Changing the learning rate does not "
-    "help either; switching to a listwise loss helps a little.",
-    f"The cause is the training labels. Trained on {ts['datasets']['scifact']['queries']} clean in-domain claims "
-    "only, with a "
-    f"listwise loss, the re-ranker fixes the regression: {sg(fo[f'{sf}/c2-minilm']['delta'])} nDCG@10 vs the "
-    f"off-the-shelf model on test ({pv(fo[f'{sf}/c2-minilm']['p'])}), in 3 minutes of GPU training.",
-    "No re-ranker beats the hybrid first stage significantly on these benchmarks; on NFCorpus the first stage "
-    f"caps what any re-ranker can do (Recall@100 = {f3(hyb[nf]['recall@100'])}).",
-    f"Serving: in fp16 on a T4 the model re-ranks 20 passages in {mini16[20]['p95']:.0f} ms p95, inside a 100 ms "
-    f"budget; a laptop CPU needs ≈ {cpu_int8_20['p95_ms'] / 1000:.1f} s even in int8. At GPU speed, tokenization "
-    "becomes half of the cost.",
+    f"<b>Little gain.</b> No re-ranker beats the hybrid first stage significantly: C2 (fine-tuned) "
+    f"{c('nfcorpus/c2-hybrid')} on NFCorpus, {c('scifact/c2-hybrid')} on SciFact, in nDCG@10.",
+    f"<b>The benchmark decides the story.</b> The off-the-shelf MS MARCO re-ranker lowers SciFact nDCG@10 "
+    f"{sg(cm['scifact/minilm-hybrid']['delta'])} (p = {cm['scifact/minilm-hybrid']['p']:.3f}, not significant). "
+    f"The whole drop sits on the {ls['without_evidence']} claims whose \"relevant\" document holds no evidence "
+    f"({sg(lsd('minilm-hybrid/without_evidence')['delta'])}); on the {ls['with_evidence']} claims with real "
+    f"evidence it is {sg(lsd('minilm-hybrid/with_evidence')['delta'])} ({pv(lsd('minilm-hybrid/with_evidence')['p'])}).",
+    f"<b>Fine-tuning mostly learns the labels.</b> Broad NFCorpus labels never help. A listwise model trained on "
+    f"{n_sf_claims} SciFact claims beats the off-the-shelf one by {c('scifact/c2-minilm')}, but that gain is "
+    f"{sg(lsd('c2-minilm/without_evidence')['delta'])} on no-evidence claims and "
+    f"{sg(lsd('c2-minilm/with_evidence')['delta'])} ({pv(lsd('c2-minilm/with_evidence')['p'])}) on evidence ones: "
+    f"{pct(ls['train_positives_without_rationale'], ls['train_positives'])} of its training positives contain no "
+    "evidence either.",
+    "<b>Real risks.</b> A re-ranker scores relevance, not stance: one study gets the same rank for a claim and for its "
+    f"negation. Int8 quantization keeps the mean but changes the top-10 set on "
+    f"{pct(i8[nf]['queries'] - i8[nf]['same_top10_set'], i8[nf]['queries'])} of queries.",
+    f"<b>Serving.</b> {mini16[20]['p95']:.0f} ms p95 for 20 passages on a T4 in fp16, ≈ "
+    f"{cpu_int8_20['p95_ms'] / 1000:.1f} s on a laptop CPU even in int8. Cost is solvable; usefulness is the question.",
 ]
 tl = [Paragraph("TL;DR", S["box_title"])] + [Paragraph(x, S["tldr"], bulletText="•") for x in tldr]
 t = Table([[tl]], colWidths=[TW])
@@ -223,12 +241,12 @@ story.append(t)
 story.append(Spacer(1, 6))
 
 # ============================================================================= 1
-H1("1. Why re-ranking matters in medical retrieval")
+H1("1. Why re-ranking, and why look twice")
 P("A clinical assistant that answers from guidelines and studies is only as good as the passages it retrieves: "
-  "if the right recommendation is not in the context, no language model can recover it, and if a weak source is "
-  "ranked first, it will be cited confidently. Production retrieval is therefore usually a <b>two-stage</b> "
-  "pipeline (Figure 1). A fast first stage searches the whole collection and returns about a hundred candidates; "
-  "a slower, more accurate model then <i>re-ranks</i> the best of them.")
+  "if the right recommendation is not in the context, no language model can recover it, and if a weak or "
+  "irrelevant source is ranked first, it will be cited confidently. Production retrieval is therefore usually a "
+  "<b>two-stage</b> pipeline (Figure 1): a fast first stage searches the whole collection and returns about a "
+  "hundred candidates, then a slower, more accurate model <i>re-ranks</i> the best of them.")
 figure("f1_pipeline", "The pipeline studied here. Offline, documents are chunked, embedded and indexed once. "
        "Online, BM25 and vector search run in parallel, their lists are merged with Reciprocal Rank Fusion, and a "
        "cross-encoder re-orders the top 20. For evaluation, the fused top 100 is exported once and every re-ranker "
@@ -237,201 +255,286 @@ callout("Bi-encoder vs cross-encoder, in one paragraph", [
     "A <b>bi-encoder</b> (the embedding model of the first stage) turns the query and each passage into vectors "
     "<i>separately</i>; passages are encoded once at indexing time and search is a nearest-neighbour lookup, which "
     "scales to millions of documents. A <b>cross-encoder</b> reads the query and one passage <i>together</i>, so "
-    "every word of the query can attend to every word of the passage. It is much more accurate at judging "
-    "relevance, but it must run once per (query, passage) pair at query time: affordable for 20 candidates, not "
-    "for a whole corpus. That is why it sits in second position."])
-P("Off-the-shelf cross-encoders are typically trained on MS MARCO, a large set of web search questions. The "
-  "question this note answers is practical: <i>does such a model help on medical evidence, can we make it better "
-  "with our own data, and what does it cost to run?</i>")
+    "every word of the query can attend to every word of the passage. It judges relevance better, but must run once "
+    "per (query, passage) pair at query time: affordable for 20 candidates, not for a corpus."])
+P("This note measures three things: whether a re-ranker helps after a strong hybrid first stage, what the "
+  "benchmark actually rewards when it says it does, and what it costs to serve. The answers are less flattering to "
+  "re-ranking than the usual RAG recipe suggests, and the most useful finding concerns the evaluation itself.")
 
 # ============================================================================= 2
 H1("2. Setup: data, first stage and an evaluation you can trust")
 H2("Two public benchmarks")
 P(f"<b>NFCorpus</b> (Boteva et al., 2016): nutrition and medical questions written for the public, linked to "
-  f"PubMed articles; about 40 relevant documents per query, with graded relevance. <b>SciFact</b> (Wadden et al., "
-  f"2020): scientific <i>claims</i> (\"Vitamin D supplementation reduces fracture risk\") paired with the abstracts "
-  f"that support or refute them; usually a single relevant abstract. Both come from the BEIR benchmark "
-  f"(Thakur et al., 2021) with official train/dev/test splits. Test sets have {N['n_queries'][nf]} and "
-  f"{N['n_queries'][sf]} queries; indexes hold {N['chunks'][nf]:,} and {N['chunks'][sf]:,} chunks.")
+  f"PubMed articles, about 40 relevant documents per query. <b>SciFact</b> (Wadden et al., 2020): scientific "
+  f"<i>claims</i> (\"Macrolides protect against myocardial infarction\") and the abstracts cited for them. Both come "
+  f"from BEIR (Thakur et al., 2021); test sets have {N['n_queries'][nf]} and {N['n_queries'][sf]} queries, indexes "
+  f"{N['chunks'][nf]:,} and {N['chunks'][sf]:,} chunks. For SciFact we also use the <b>official annotation</b> of "
+  "the original release, which says for each cited abstract whether it SUPPORTS the claim, CONTRADICTS it, or "
+  "neither; BEIR keeps only \"cited = relevant\" (Section 6).")
 H2("A hybrid first stage")
 P("Documents are split into chunks of about 250 words and indexed in Elasticsearch twice over: as text for BM25 "
-  "(keyword matching) and as vectors from <i>multilingual-e5-base</i> (semantic matching, Wang et al., 2024). For "
-  "each query both lists are retrieved in one round trip, each chunk is mapped to its document, and the two "
-  "rankings are merged with Reciprocal Rank Fusion (Cormack et al., 2009), which only uses ranks and therefore "
-  "needs no score calibration:")
+  "and as vectors from <i>multilingual-e5-base</i> (Wang et al., 2024). For each query both lists are retrieved in "
+  "one round trip, chunks are mapped to their documents, and the rankings are merged with Reciprocal Rank Fusion "
+  "(Cormack et al., 2009), which only uses ranks and needs no score calibration:")
 equation("eq_rrf", TW * 0.62)
-figure("f2_baselines", "First-stage results on the test sets. Hybrid fusion beats both of its components on "
-       "both datasets and both metrics; it is the baseline every re-ranker has to beat.")
+figure("f2_baselines", f"First-stage results on the test sets. Hybrid fusion beats BM25 on both datasets "
+       f"(NFCorpus {c('nfcorpus/hybrid-bm25')}, SciFact {c('scifact/hybrid-bm25')}); it is the baseline every "
+       "re-ranker has to beat.")
 callout("Reading the metrics", [
     "<b>nDCG@10</b> scores the first ten results: a relevant document counts more the higher it is ranked "
-    "(logarithmic discount), and the score is normalised by the best possible ranking, so 1.0 is perfect.",
-    "<b>Recall@100</b> is the share of relevant documents present anywhere in the top 100: what the second stage "
-    "could possibly promote. <b>MRR@10</b> looks only at the rank of the first relevant result."])
+    "(logarithmic discount), normalised by the best possible ranking, so 1.0 is perfect. <b>Recall@100</b> is the "
+    "share of relevant documents anywhere in the top 100: what a second stage could promote. <b>MRR@10</b> looks "
+    "only at the rank of the first relevant result."])
 equation("eq_ndcg", TW * 0.5)
 H2("Protocol")
 bullets([
     "<b>Replay, not re-run.</b> The fused top 100 of every query is exported once; every re-ranker, depth and "
-    "checkpoint is then scored on identical candidates, without Elasticsearch. Replaying the export without "
-    "re-ranking reproduces the first-stage runs exactly, a built-in consistency check.",
+    "checkpoint is scored on identical candidates. Replaying the export without re-ranking reproduces the "
+    "first-stage runs exactly.",
     "<b>Validation for decisions, test once.</b> Depths, checkpoints and model choices are made on NFCorpus dev and "
-    "on 200 held-out SciFact training claims; each test set is evaluated once per final system, with the decision "
-    "rule written down before looking.",
-    "<b>Paired significance.</b> Two systems are compared query by query with a paired permutation test "
-    "(10,000 permutations; Smucker et al., 2007) and 95% bootstrap confidence intervals, not by comparing means.",
+    "on 200 held-out SciFact training claims; each final system is evaluated once on test, with the decision rule "
+    "written down before looking.",
+    "<b>Paired significance.</b> Systems are compared query by query with a paired permutation test (10,000 "
+    "permutations; Smucker et al., 2007) and 95% bootstrap confidence intervals.",
 ])
-callout("Why a permutation test?", [
-    "With 300 queries, a difference of 0.01 in mean nDCG@10 can easily be luck: a handful of queries flipping "
-    "decides it. The permutation test asks how often a difference at least this large appears if we randomly swap "
-    "the two systems' scores within each query. A small p-value means the observed gap is unlikely under "
-    "\"no difference\". It is paired, so the large variance between easy and hard queries cancels out."])
 
 # ============================================================================= 3
-H1("3. Surprise #1: the off-the-shelf re-ranker hurts")
-P(f"We first re-rank with <i>cross-encoder/ms-marco-MiniLM-L-6-v2</i>, a popular 22M-parameter model. The depth "
-  f"(how many fused candidates to re-score) is tuned on validation (Figure 3, right): re-ranking more never helps, "
-  f"and on SciFact every depth is <i>below</i> the first stage ({f3(tn[sf]['20'])} at top 20 vs "
-  f"{f3(tn[sf]['fused'])} without re-ranking). We keep top 20 and evaluate once on test (Table 1).")
-figures_side(("f3_recall_ceiling", 0.47), ("f4_topn", 0.47),
-             f"Left: share of relevant documents found within the first k candidates (test). On NFCorpus only "
-             f"{ra[nf]['20'] * 100:.0f}% of relevant documents are in the re-ranked window and "
-             f"{ra[nf]['100'] * 100:.0f}% in the top 100: a hard ceiling for any re-ranker. SciFact reaches "
-             f"{ra[sf]['20'] * 100:.0f}% at 20. Right: effect of the re-ranking depth for the off-the-shelf model "
-             f"on the validation sets.")
-table(["Test, nDCG@10", "BM25", "Dense", "Hybrid RRF", "+ MiniLM (MS MARCO)", "Δ vs hybrid"],
-      [["NFCorpus", f3(bm[nf]["ndcg@10"]), f3(den[nf]["ndcg@10"]), f3(hyb[nf]["ndcg@10"]), f3(mini[nf]["ndcg@10"]),
-        f"{sg(fo[f'{nf}/minilm-hybrid']['delta'])} ({pv(fo[f'{nf}/minilm-hybrid']['p'])})"],
-       ["SciFact", f3(bm[sf]["ndcg@10"]), f3(den[sf]["ndcg@10"]), f3(hyb[sf]["ndcg@10"]), f3(mini[sf]["ndcg@10"]),
-        f"{sg(fo[f'{sf}/minilm-hybrid']['delta'])} ({pv(fo[f'{sf}/minilm-hybrid']['p'])})"]],
-      [0.17, 0.11, 0.11, 0.15, 0.2, 0.26], "Off-the-shelf re-ranking on test (top 20 re-ranked).")
-P("Why would a strong re-ranker make things worse? Two reasons that compound. First, the baseline is already "
-  "high: the BEIR authors report gains of about +0.02 on these two datasets for an MS MARCO cross-encoder "
-  "re-ranking <i>BM25</i>, but our hybrid "
-  f"first stage is already {sg(hyb[sf]['ndcg@10'] - bm[sf]['ndcg@10'])} above BM25 on SciFact. Second, the "
-  "task is different. MS MARCO teaches \"does this passage answer the question?\"; SciFact asks \"is this the "
-  "evidence for or against this claim?\". Claims are declarative, often negated (\"… does not cause …\"), and the "
-  "relevant abstract may well <i>contradict</i> them, something a question-answering model is not trained to "
-  "reward. Negated claims indeed lose the most in our per-query analysis.")
+H1("3. An off-the-shelf re-ranker: no significant gain")
+P(f"We first re-rank with <i>cross-encoder/ms-marco-MiniLM-L-6-v2</i> (22M parameters). The depth is tuned on "
+  f"validation (Figure 3, right): re-ranking more never helps, and on SciFact every depth is below the first stage "
+  f"({f3(tn[sf]['20'])} at top 20 vs {f3(tn[sf]['fused'])}). We keep top 20 and evaluate once on test (Table 1).")
+figures_side(("f3_recall_ceiling", 0.478), ("f4_topn", 0.478),
+             f"Left: share of relevant documents within the first k candidates (test). On NFCorpus only "
+             f"{ra[nf]['20'] * 100:.0f}% are in the re-ranked window and {ra[nf]['100'] * 100:.0f}% in the top 100: "
+             f"a hard ceiling for any re-ranker. Right: effect of the depth on validation.")
+table(["Test, nDCG@10", "BM25", "Dense", "Hybrid RRF", "+ MiniLM (MS MARCO)", "Δ vs hybrid (p)", "95% CI"],
+      [[DS_, f3(R[d]["bm25"]["ndcg@10"]), f3(R[d]["dense"]["ndcg@10"]), f3(R[d]["hybrid"]["ndcg@10"]),
+        f3(R[d]["minilm"]["ndcg@10"]), c(f"{d}/minilm-hybrid"), ci(cm[f"{d}/minilm-hybrid"])]
+       for d, DS_ in ((nf, "NFCorpus"), (sf, "SciFact"))],
+      [0.15, 0.09, 0.09, 0.12, 0.17, 0.2, 0.18], "Off-the-shelf re-ranking on test (top 20 re-ranked).")
+P(f"On NFCorpus the re-ranker moves the first relevant result up (MRR@10 {f3(R[nf]['hybrid']['mrr@10'])} → "
+  f"{f3(R[nf]['minilm']['mrr@10'])}) but the nDCG gain is not significant. On SciFact it <i>lowers</i> nDCG@10, "
+  f"with an interval that reaches zero (p = {cm['scifact/minilm-hybrid']['p']:.3f}). The natural reading is a "
+  "domain mismatch, since MS MARCO teaches \"does this passage answer the question?\" while SciFact asks for the "
+  "evidence on a claim. Section 6 shows that this reading is mostly wrong.")
 
 # ============================================================================= 4
-H1("4. Surprise #2: fine-tuning on our own data does not help either")
-P("The natural fix is to fine-tune the re-ranker on the training splits of the two datasets, with <b>hard "
-  "negatives</b> mined by our own first stage: non-relevant documents that the retriever ranks high, precisely "
-  "the mistakes the re-ranker must learn to correct (Figure 4). On NFCorpus, whose judgments are incomplete, the "
-  "top three unjudged documents are not used as negatives, because they are often relevant but unlisted.")
-figure("f5_pairs", "Building training pairs for one query from the first-stage ranking (illustrative).")
-P(f"The resulting set has {ts['train_pairs']:,} (query, passage, label) pairs, {ts['positives_share'] * 100:.0f}% "
-  "positive. Training queries whose text is identical to a test or validation query were removed (a few exist "
-  "across BEIR splits). We train with the standard pointwise binary cross-entropy:")
+H1("4. Fine-tuning: an ablation, one factor at a time")
+P("The fix one would try is to fine-tune the re-ranker on the training splits, with <b>hard negatives</b> mined "
+  "by our own first stage: non-relevant documents the retriever ranks high, the mistakes the re-ranker must "
+  "correct (Figure 4).")
+figure("f5_pairs", "Building training pairs for one query from the first-stage ranking.")
+P(f"The set has {ts['train_pairs']:,} pairs, {ts['positives_share'] * 100:.0f}% positive; training queries whose "
+  "text equals a test or validation query were removed. The first run uses pointwise binary cross-entropy:")
 equation("eq_bce", TW * 0.66)
-P("where s is the model's score for the pair and y its 0/1 label. Figure 5 shows what happens on validation: the "
-  "model first <i>forgets</i> (both datasets drop sharply), then NFCorpus slowly recovers to the base level while "
-  "SciFact never does. No checkpoint beats the starting model, so the training script, which keeps the best "
-  "validation checkpoint and starts from the base model, simply returns the base model.")
-figure("f6_learning_curves", "Validation nDCG@10 during fine-tuning (Kaggle T4). Dotted: the off-the-shelf model "
-       "(step 0). Dash-dotted: the first stage without re-ranking. Pointwise runs (orange) degrade, with a high or a "
-       "low learning rate; the listwise run on SciFact only (green) improves and stays there.")
+P(f"Figure 5 shows validation during training: the model first forgets (SciFact falls to "
+  f"{f3(N['run1_scifact_min'])}), NFCorpus slowly recovers, SciFact never does, and no checkpoint beats the starting "
+  "model. We then changed one factor per run (Figure 6): a 4× lower learning rate (A) only delays the collapse; a "
+  "<b>listwise</b> loss that ranks one positive against seven hard negatives of the same query (Gao et al., 2021) "
+  "helps (B); training on NFCorpus alone never improves anything (C1); training on SciFact alone does (C2).")
+equation("eq_listwise", TW * 0.6)
+figure("f6_learning_curves", "Validation nDCG@10 during fine-tuning (Kaggle T4). Pointwise runs degrade with a high "
+       "or a low learning rate; the listwise run on SciFact only improves and stays there.")
+figure("f7_ablation", "Best validation checkpoint of each run, relative to the off-the-shelf model. \"Base kept\": no "
+       "checkpoint beat it.")
+P(f"With {n_nf_pairs:,} broad NFCorpus pairs the model got worse; with {n_sf_claims} SciFact claims, C2, it got "
+  f"better on SciFact ({sg(ab[sf]['C2'])} on validation) without moving NFCorpus ({sg(ab[nf]['C2'])}). It was selected "
+  f"among {N['c2_validation_evaluations']} evaluations of the same validation queries, so that number is optimistic; "
+  "test decides.")
 
 # ============================================================================= 5
-H1("5. The ablation: what actually matters")
-P("A failed run has many possible causes. We changed one factor at a time, with the same data, validation sets and "
-  "selection rule (Figure 6).")
-bullets([
-    "<b>Learning rate (run A, 4× lower).</b> The collapse on SciFact is only delayed, from step 500 to about 750. "
-    "Not the cause.",
-    "<b>Loss (run B).</b> A re-ranker only needs to <i>order</i> the documents of one query, not to predict an "
-    "absolute probability. The listwise (\"localised contrastive\") loss of Gao et al. (2021) compares one positive "
-    "against seven hard negatives of the same query with a softmax:",
-])
-equation("eq_listwise", TW * 0.6)
-bullets([
-    f"With the same data, run B is better than the pointwise runs (SciFact {sg(ab[sf]['B'])} over the base model) "
-    f"but still loses on NFCorpus ({sg(ab[nf]['B'])}). Helps, but not enough.",
-    "<b>Data (runs C1, C2).</b> Trained on NFCorpus alone, the listwise model never improves, not even on "
-    f"NFCorpus. Trained on SciFact alone (608 claims, 516 steps, 3 minutes), it improves SciFact by "
-    f"{sg(ab[sf]['C2'])} and leaves NFCorpus untouched ({sg(ab[nf]['C2'])}).",
-])
-figure("f7_ablation", "Best validation checkpoint of each fine-tuning run, relative to the off-the-shelf model. "
-       "Runs 1, A and C1 never beat it. Only the listwise loss on clean in-domain labels (C2) improves without "
-       "hurting the other dataset.")
-P("The diagnosis is the labels. NFCorpus judgments are derived from citation links between a health website and "
-  "PubMed: about forty \"relevant\" documents per query, many only loosely on topic. For a model that already "
-  "knows how to rank, these broad labels contain little new information, and they pull it away from the precise "
-  "evidence matching SciFact needs. Mixing them in degrades SciFact; removing them is what works. More data was "
-  "not better: 83,604 weak pairs did harm, 608 clean ones helped.")
+H1("5. Test results with BEIR labels")
+P("C2 was evaluated once on both test sets, with the rule fixed beforehand: keep it if it is not significantly worse "
+  "than the first stage and beats the off-the-shelf model on SciFact (Figure 7, Table 2).")
+figure("f8_forest", "Paired differences in nDCG@10 on test, BEIR relevance labels.")
+table(["Test", "Hybrid RRF", "+ MiniLM", "+ C2", "C2 vs MiniLM", "C2 vs hybrid", "C2 vs hybrid: W / L / T"],
+      [[f"{DS_} nDCG@10", f3(R[d]["hybrid"]["ndcg@10"]), f3(R[d]["minilm"]["ndcg@10"]), f3(R[d]["c2"]["ndcg@10"]),
+        c(f"{d}/c2-minilm"), c(f"{d}/c2-hybrid"),
+        f"{cm[f'{d}/c2-hybrid']['wins']} / {cm[f'{d}/c2-hybrid']['losses']} / {cm[f'{d}/c2-hybrid']['ties']}"]
+       for d, DS_ in ((nf, "NFCorpus"), (sf, "SciFact"))],
+      [0.17, 0.11, 0.1, 0.09, 0.19, 0.17, 0.17], "Final comparison on test (top 20 re-ranked).")
+P(f"By the BEIR labels, C2 meets the rule: it beats the off-the-shelf model on SciFact ({c('scifact/c2-minilm')}) "
+  f"and is level with the first stage ({c('scifact/c2-hybrid')}). On NFCorpus nothing is significant. Across queries "
+  f"it wins some and loses others ({cm['scifact/c2-hybrid']['wins']} vs {cm['scifact/c2-hybrid']['losses']} on "
+  "SciFact): it moves errors more than it removes them. Read with BEIR labels alone, this looks like \"the "
+  "off-the-shelf model has a domain problem and fine-tuning fixes it\". The next section shows what is underneath.")
 
 # ============================================================================= 6
-H1("6. Test results, with uncertainty")
-P("The fine-tuned model, called C2, was then evaluated once on both test sets with the rule fixed beforehand: keep "
-  "it if it is not significantly worse than the first stage on either dataset and it beats the off-the-shelf model "
-  "on SciFact. Figure 7 shows each difference with its 95% confidence interval.")
-figure("f8_forest", "Paired differences in nDCG@10 on test. An interval that crosses zero means the data cannot "
-       "rule out \"no difference\". p-values from paired permutation tests.")
-table(["Test", "Hybrid RRF", "+ MiniLM", "+ C2 (fine-tuned)", "C2 vs MiniLM", "C2 vs hybrid"],
-      [["NFCorpus nDCG@10", f3(hyb[nf]["ndcg@10"]), f3(mini[nf]["ndcg@10"]), f3(c2[nf]["ndcg@10"]),
-        f"{sg(fo[f'{nf}/c2-minilm']['delta'])} ({pv(fo[f'{nf}/c2-minilm']['p'])})",
-        f"{sg(fo[f'{nf}/c2-hybrid']['delta'])} ({pv(fo[f'{nf}/c2-hybrid']['p'])})"],
-       ["SciFact nDCG@10", f3(hyb[sf]["ndcg@10"]), f3(mini[sf]["ndcg@10"]), f3(c2[sf]["ndcg@10"]),
-        f"<b>{sg(fo[f'{sf}/c2-minilm']['delta'])} ({pv(fo[f'{sf}/c2-minilm']['p'])})</b>",
-        f"{sg(fo[f'{sf}/c2-hybrid']['delta'])} ({pv(fo[f'{sf}/c2-hybrid']['p'])})"],
-       ["NFCorpus MRR@10", f3(hyb[nf]["mrr@10"]), f3(mini[nf]["mrr@10"]), f3(c2[nf]["mrr@10"]), "", ""],
-       ["SciFact MRR@10", f3(hyb[sf]["mrr@10"]), f3(mini[sf]["mrr@10"]), f3(c2[sf]["mrr@10"]), "", ""]],
-      [0.2, 0.13, 0.12, 0.17, 0.19, 0.19], "Final comparison on test (top 20 re-ranked).", highlight=[2])
-P("Two conclusions, and it matters to state both. Fine-tuning on a small clean in-domain set <b>does fix</b> the "
-  "domain mismatch of the off-the-shelf model, with an interval well clear of zero. But <b>no re-ranker beats the "
-  "hybrid first stage significantly</b>: on NFCorpus the gain is about +0.01 with an interval touching zero, on "
-  "SciFact C2 is level with the first stage. With 300 queries, effects of this size are below what the "
-  "protocol can detect, and on NFCorpus the re-ranker can only reorder the "
-  f"{ra[nf]['20'] * 100:.0f}% of relevant documents that the first stage put in its top 20.")
+H1("6. What the benchmark actually rewards")
+P(f"In BEIR, a SciFact document is relevant if the claim <i>cites</i> it. The official annotation is stricter: "
+  f"of the {lb['relevant_pairs']} relevant (claim, document) pairs of the test set, {lb['pairs_support']} SUPPORT "
+  f"the claim, {lb['pairs_contradict']} CONTRADICT it, and <b>{lb['pairs_without_rationale']} "
+  f"({pct(lb['pairs_without_rationale'], lb['relevant_pairs'])}) contain no sentence that settles it</b>. For "
+  f"{lb['claims_only_without_rationale']} of the {lb['claims']} claims, every \"relevant\" document is of that "
+  "kind. Splitting the test claims along this line changes the conclusions (Figure 8).")
+figure("f12_label_split", "Differences in nDCG@10 (BEIR labels), split by the official annotation of the claim's "
+       "relevant documents. Bars: mean; whiskers: 95% bootstrap CI.")
+bullets([
+    f"<b>The off-the-shelf model's loss is entirely on claims without evidence</b>: "
+    f"{sg(lsd('minilm-hybrid/without_evidence')['delta'])} ({pv(lsd('minilm-hybrid/without_evidence')['p'])}) on the "
+    f"{ls['without_evidence']} claims whose cited document settles nothing, "
+    f"{sg(lsd('minilm-hybrid/with_evidence')['delta'])} ({pv(lsd('minilm-hybrid/with_evidence')['p'])}) on the "
+    f"{ls['with_evidence']} others. It pushes down documents that are cited but say nothing about the claim, which "
+    "is arguably the right behaviour, and the BEIR metric penalises it.",
+    f"<b>C2's advantage over the off-the-shelf model is mostly the same effect in reverse</b>: "
+    f"{sg(lsd('c2-minilm/without_evidence')['delta'])} ({pv(lsd('c2-minilm/without_evidence')['p'])}) on claims without "
+    f"evidence, {sg(lsd('c2-minilm/with_evidence')['delta'])} ({pv(lsd('c2-minilm/with_evidence')['p'])}) on claims with "
+    f"evidence. Its training positives are BEIR labels too, and {ls['train_positives_without_rationale']} of "
+    f"{ls['train_positives']} ({pct(ls['train_positives_without_rationale'], ls['train_positives'])}) contain no "
+    "evidence: C2 learned the benchmark's citation convention as much as evidence matching.",
+    f"<b>Scored on evidence only</b> (a document is relevant only if it SUPPORTS or CONTRADICTS, {ev['claims']} "
+    f"claims), the order is hybrid {f3(ev['hybrid'])}, MiniLM {f3(ev['minilm'])}, C2 {f3(ev['c2'])}; neither "
+    f"difference with hybrid is significant (C2 {sg(ev['c2-hybrid']['delta'])}, "
+    f"p = {ev['c2-hybrid']['p']:.3f}).",
+])
+P(f"Figure 9 gives the same picture from the top of the list. A document that actually SUPPORTS or CONTRADICTS the "
+  f"claim is at rank 1 for {r1['hybrid']['evidence']['share'] * 100:.0f}% of claims with the hybrid first stage "
+  f"(95% CI {r1['hybrid']['evidence']['ci'][0] * 100:.0f}–{r1['hybrid']['evidence']['ci'][1] * 100:.0f}%), "
+  f"{r1['minilm']['evidence']['share'] * 100:.0f}% with MiniLM and {r1['c2']['evidence']['share'] * 100:.0f}% with "
+  f"C2: overlapping intervals, no measurable difference. Contradicting evidence is at rank 1 for "
+  f"{r1['hybrid']['contradict']['share'] * 100:.0f}–{max(r1[k]['contradict']['share'] for k in r1) * 100:.0f}% of "
+  "claims: that is correct retrieval (refuting evidence is evidence), but it is exactly where a generator can turn "
+  "a refutation into support.")
+figure("f11_rank1", "What sits at rank 1 for the 300 SciFact test claims, by official label. \"Not cited\": a "
+       "document the claim does not cite (no judgement available).")
+table(["SciFact claim", "Study (official stance)", "Hybrid", "+ MiniLM", "+ C2"],
+      [[f"<b>{q}</b> · {ex[q]['claim']}", f"{ex[q]['title']} <b>({ex[q]['label']})</b>",
+        str(ex[q]["ranks"]["hybrid"]), str(ex[q]["ranks"]["minilm"]), str(ex[q]["ranks"]["c2"])] for q in ex],
+      [0.33, 0.43, 0.08, 0.08, 0.08], "Rank of the evidence document for three real test claims (ranks from the run "
+      "files, stance from the official annotation). Claims 742 and 743 say opposite things; the same sentence of the "
+      "same study SUPPORTS one and CONTRADICTS the other, and every system ranks it identically for both.")
 
 # ============================================================================= 7
 H1("7. What it costs to serve")
 P("A re-ranker earns its place only if it fits the latency budget: here p95 &lt; 300 ms end to end, of which about "
-  "100 ms for re-ranking. We measured C2's architecture on a laptop CPU (exported to ONNX, fp32 and dynamically "
-  "quantized int8) and on an NVIDIA T4 GPU (fp32 and fp16), with real passages, warm-up excluded (Figure 8).")
-figures_side(("f9_latency", 0.62), ("f10_breakdown", 0.34),
-             "Left: p95 latency per query against the number of passages re-ranked (log scale). Right: on the GPU "
-             "in fp16, tokenization on the CPU is as large as the model itself.")
+  "100 ms for re-ranking. We measured C2's architecture on a laptop CPU (ONNX fp32 and dynamically quantized int8) "
+  "and on an NVIDIA T4 (fp32 and fp16), with real passages, warm-up excluded (Figure 10).")
 bullets([
-    f"<b>GPU fp16 fits with margin</b>: {mini16[20]['p95']:.0f} ms p95 for 20 passages, {mini16[50]['p95']:.0f} ms "
-    f"for 50; fp16 is 2–4× faster than fp32 on the T4 ({mini32[20]['p95']:.0f} ms at 20).",
-    f"<b>Int8 on CPU</b> keeps ranking quality on validation and cuts the model 4× in size, but a 15 W laptop still "
-    f"needs ≈ {cpu_int8_20['p95_ms']:.0f} ms p95 for 20 passages ({cpu_fp32_20['p95_ms']:.0f} ms in fp32): a "
-    "fallback, not a serving target.",
-    f"<b>The larger bge-reranker-base</b> fits only at depth 20 in fp16 ({bge16[20]['p95']:.0f} ms) and costs about "
-    "3× MiniLM: it would need a clear quality gain to justify it.",
-    f"<b>Tokenization becomes the bottleneck</b>: {mini16[20]['tok']:.0f} of {mini16[20]['p50']:.0f} ms at depth 20. "
-    "Passages can be tokenized once at indexing time and stored with the chunk, so only the query is tokenized "
-    "online.",
+    f"<b>GPU fp16 fits with margin</b>: {mini16[20]['p95']:.0f} ms p95 at depth 20, {mini16[50]['p95']:.0f} ms at "
+    f"50; fp32 needs {mini32[20]['p95']:.0f} ms at 20. The larger bge-reranker-base fits only at depth 20 "
+    f"({bge16[20]['p95']:.0f} ms).",
+    f"<b>Laptop CPU</b>: {cpu_int8_20['p95_ms']:.0f} ms p95 at depth 20 in int8 ({cpu_fp32_20['p95_ms']:.0f} ms in "
+    "fp32): a fallback, not a serving target.",
+    f"<b>Tokenization becomes the bottleneck on GPU</b>: {mini16[20]['tok']:.0f} of {mini16[20]['p50']:.0f} ms at "
+    "depth 20. Passages can be tokenized at indexing time and stored with the chunk.",
 ])
+figure("f9_latency", "Left: p95 latency per query against the number of passages re-ranked (log scale). Right: on "
+       "the GPU in fp16, tokenization on the CPU is as large as the model itself.")
+figure("f10_quality_latency", f"Quality against latency (test). Filled points are measured on the laptop; the hollow "
+       f"point is an estimate for C2 served on a T4 (first-stage p50 + GPU re-ranking p50 at depth 20 = "
+       f"{N['c2_t4_estimate_p50_ms'][nf]:.0f} ms on NFCorpus, {N['c2_t4_estimate_p50_ms'][sf]:.0f} ms on SciFact). "
+       "On a GPU the re-ranker fits the target; it does not move quality off the hybrid point.")
 
 # ============================================================================= 8
-H1("8. Lessons")
+H1("8. Risks: what a re-ranker can get wrong")
+P("A re-ranker does not generate text, but it decides which sources the language model reads and cites first. It "
+  "optimises topical relevance, not truth: it cannot tell whether a passage supports or refutes the claim, and "
+  "nothing in its training asks it to. Table 4 lists what that can cause, what this study measured, and how to "
+  "contain it.")
+tab_no[0] += 1
+risk_rows = [
+    ("<b>Clinical safety</b>", "", "", ""),
+    ("Stance confusion", "A refuting passage is ranked first because it is on topic; the generator reads it as "
+     "support.", f"Measured: the macrolides study gets the same rank for claim 742 and its negation 743; contradicting "
+     f"evidence is at rank 1 for {r1['hybrid']['contradict']['share'] * 100:.0f}–"
+     f"{max(r1[k]['contradict']['share'] for k in r1) * 100:.0f}% of claims.",
+     "Stance check after generation; evaluate with SUPPORT / CONTRADICT labels."),
+    ("Negation", "\"does not\", \"no effect\" read as the positive claim.",
+     f"Indirect: MiniLM vs hybrid {sg(neg['minilm-hybrid/negated']['delta'])} on negated claims (n = "
+     f"{neg['minilm-hybrid/negated']['n']}, p = {neg['minilm-hybrid/negated']['p']:.2f}) vs "
+     f"{sg(neg['minilm-hybrid/other']['delta'])} on the others (regex selection, small sample).",
+     "Negation-aware test sets; keep negation in the grounding check."),
+    ("Wrong population", "A paediatric or animal study for an adult question.", "Not measured.",
+     "Population check in the grounding guard; metadata filters."),
+    ("Weak evidence first", "A case report ranked above a grade A recommendation.", "Not measured.",
+     "Evidence grade as a filter or a ranking feature."),
+    ("False confidence", "A high score read as certainty.", "Not measured.",
+     "Calibration; answer / qualify / abstain decided in a separate layer."),
+    ("<b>Quality</b>", "", "", ""),
+    ("No gain over the first stage", "Added latency and complexity for nothing.",
+     f"Measured: C2 vs hybrid {c('nfcorpus/c2-hybrid')} and {c('scifact/c2-hybrid')}.",
+     "Keep re-ranking behind a flag; ship only on a significant gain."),
+    ("Errors moved, not removed", "Some queries improve, others break.",
+     f"Measured: {cm['scifact/c2-hybrid']['wins']} wins, {cm['scifact/c2-hybrid']['losses']} losses, "
+     f"{cm['scifact/c2-hybrid']['ties']} ties (C2 vs hybrid, SciFact).",
+     "Per-query regression review before release."),
+    ("Fragile fine-tuning", "A training run silently degrades the model.",
+     f"Measured: SciFact validation fell from {f3(KR['base']['scifact'])} to {f3(N['run1_scifact_min'])} in run 1.",
+     "Evaluate during training; keep the base model unless beaten."),
+    ("<b>Evaluation</b>", "", "", ""),
+    ("Label convention taken for quality", "The metric rewards finding the cited document, not the one that settles "
+     "the claim.", f"Measured: {pct(lb['pairs_without_rationale'], lb['relevant_pairs'])} of BEIR SciFact relevant "
+     f"pairs hold no evidence; both the MiniLM loss and the C2 gain sit on those claims.",
+     "Evaluate with stance labels; report evidence-only metrics next to BEIR ones."),
+    ("Noise taken for gain", "A lucky checkpoint or a small test set.",
+     f"Measured: C2 chosen after {N['c2_validation_evaluations']} evaluations of the same validation queries; test "
+     f"sets of {N['n_queries'][nf]} and {N['n_queries'][sf]} queries; CIs of ±0.03 on SciFact.",
+     "Fixed decision rules; one test evaluation; paired tests and CIs."),
+    ("<b>Operations</b>", "", "", ""),
+    ("Cost and failure", "Timeouts, GPU unavailable.",
+     f"Measured: {cpu_int8_20['p95_ms']:.0f} ms (CPU int8) vs {mini16[20]['p95']:.0f} ms (T4 fp16) p95 at depth 20.",
+     "GPU fp16; conditional re-ranking; fall back to the hybrid ranking."),
+    ("Silent drift", "Quantization or a new model changes rankings with the same mean.",
+     f"Measured: int8 keeps nDCG ({f3(i8[nf]['ndcg_fp32'])} → {f3(i8[nf]['ndcg_int8'])}) but the same top-10 set on "
+     f"only {i8[nf]['same_top10_set']}/{i8[nf]['queries']} NFCorpus and {i8[sf]['same_top10_set']}/"
+     f"{i8[sf]['queries']} SciFact validation queries.", "Version models; regression tests on rankings, not only means."),
+    ("Traceability", "No way to explain why a passage came first.", "Not measured (design).",
+     "Log first-stage ranks and re-ranker scores with every answer."),
+]
+data = [[Paragraph(h, S["cellh"]) for h in ("Risk", "What can happen", "Evidence in this study", "Mitigation")]]
+st = [("BACKGROUND", (0, 0), (-1, 0), ACCENT), ("VALIGN", (0, 0), (-1, -1), "TOP"),
+      ("LINEBELOW", (0, 1), (-1, -1), 0.4, RULE), ("TOPPADDING", (0, 0), (-1, -1), 2.8),
+      ("BOTTOMPADDING", (0, 0), (-1, -1), 2.8), ("LEFTPADDING", (0, 0), (-1, -1), 4),
+      ("RIGHTPADDING", (0, 0), (-1, -1), 4)]
+for row in risk_rows:
+    i = len(data)
+    data.append([Paragraph(x, S["cell"]) for x in row])
+    if not row[1]:
+        st += [("SPAN", (0, i), (-1, i)), ("BACKGROUND", (0, i), (-1, i), SOFT)]
+rt = Table(data, colWidths=[TW * w for w in (0.16, 0.25, 0.33, 0.26)], repeatRows=1)
+rt.setStyle(TableStyle(st))
+story.append(Paragraph(f"<b>Table {tab_no[0]}.</b> Risks of a re-ranking stage in medical retrieval.", S["caption"]))
+story.append(rt)
+P("Rows marked \"Not measured\" are identified risks, not results of this study.", "caption")
+callout("Relevance is not evidence", [
+    "Neither the re-ranker nor the first stage knows whether a passage <i>supports</i> the claim; the BEIR metric does "
+    "not know either. Safety therefore cannot be delegated to ranking. It belongs to a layer after generation that "
+    "checks that each citation exists, quotes its source exactly, keeps negation, population and figures, and decides "
+    "whether to answer, qualify or abstain."])
+
+# ============================================================================= 9
+H1("9. Lessons")
 bullets([
     "<b>Measure the re-ranker against the first stage, not against nothing.</b> A strong hybrid retriever leaves "
-    "little room, and an off-the-shelf model can lose it.",
-    "<b>Label quality beats label quantity.</b> 608 clean, task-matched examples helped; 83,604 broad ones hurt. In "
-    "a clinical setting this argues for small clinician-validated sets over large weak ones.",
+    "little room.",
+    "<b>Know what your labels reward.</b> Decompose a benchmark gain by label type before concluding: here it changed "
+    "\"domain mismatch, fixed by fine-tuning\" into \"citation convention, learned by fine-tuning\".",
+    "<b>Label quality beats label quantity</b>, and the training labels carry the evaluation's conventions with them.",
     "<b>Use a ranking objective.</b> A listwise loss over a query's own hard negatives fits what a re-ranker does.",
-    "<b>Ablate one factor at a time and keep failed runs.</b> Without runs A, B and C1, the conclusion would have "
-    "been \"lower the learning rate\", which is wrong.",
-    "<b>Recall is the ceiling.</b> When the first stage misses 70% of the relevant documents, the next gains come "
-    "from query processing and candidate generation, not from a better re-ranker.",
-    "<b>Precision and tokenization are serving levers.</b> fp16 on GPU, int8 on CPU, and pre-tokenized passages.",
+    "<b>Ablate one factor at a time and keep the failed runs.</b> Without them the conclusion would have been "
+    "\"lower the learning rate\".",
+    "<b>Recall is the ceiling.</b> When the first stage misses most relevant documents, gains come from candidate "
+    "generation and query processing.",
+    "<b>Do not delegate safety to ranking</b>: measure what sits at rank 1 with stance labels, and verify citations "
+    "after generation.",
+    "<b>A GPU makes a re-ranker affordable; it does not make it useful.</b>",
 ])
-H2("Limitations")
-P("Two small English benchmarks; labels from benchmark judgments, not clinicians; one training seed per run; "
-  "laptop-scale indexes (thousands of chunks), so first-stage latency here says nothing about 100M-document "
-  "behaviour; GPU throughput is extrapolated, not load-tested. French queries and guideline documents are the "
-  "next steps of the project.")
+H2("Limitations and next steps")
+P("Two small English benchmarks; labels from benchmark annotations, not clinicians; one training seed per run; "
+  "laptop-scale indexes, so first-stage latency says nothing yet about 100M documents; GPU throughput is "
+  "estimated, not load-tested. Next: train and select with stance-aware labels (evidence only), measure stance "
+  "errors of a generator on the retrieved passages, a load test at 50 req/s, French queries and guideline "
+  "documents.", "body")
 H2("Reproducibility")
 P("Every number and figure in this note is generated from run files by <font face='Mono'>docs/article/"
-  "make_figures.py</font>. Commands: <font face='Mono'>cer candidates</font> (export first-stage candidates), "
-  "<font face='Mono'>cer rerank</font> (replay a re-ranker), <font face='Mono'>scripts/train_reranker.py</font> "
-  "(fine-tuning, listwise or pointwise), <font face='Mono'>cer export-onnx</font> and "
-  "<font face='Mono'>scripts/bench_reranker*.py</font> (serving cost).", "body_left")
+  "make_figures.py</font>, which also writes <font face='Mono'>post-numbers.md</font>. Commands: "
+  "<font face='Mono'>cer candidates</font>, <font face='Mono'>cer rerank</font>, "
+  "<font face='Mono'>scripts/train_reranker.py</font>, <font face='Mono'>cer export-onnx</font>, "
+  "<font face='Mono'>scripts/bench_reranker*.py</font>; the official SciFact labels are read with "
+  "<font face='Mono'>scripts/extract_scifact_labels.py</font>.", "body_left")
 
 H1("References")
-for r in [
+for ref in [
     "Boteva, V., Gholipour, D., Sokolov, A., Riezler, S. (2016). A Full-Text Learning to Rank Dataset for Medical "
     "Information Retrieval. <i>ECIR</i>.",
     "Cormack, G. V., Clarke, C. L. A., Büttcher, S. (2009). Reciprocal Rank Fusion Outperforms Condorcet and "
@@ -443,11 +546,11 @@ for r in [
     "Thakur, N., Reimers, N., Rücklé, A., Srivastava, A., Gurevych, I. (2021). BEIR: A Heterogeneous Benchmark for "
     "Zero-shot Evaluation of Information Retrieval Models. <i>NeurIPS Datasets and Benchmarks</i>.",
     "Wadden, D., Lin, S., Lo, K., Wang, L. L., van Zuylen, M., Cohan, A., Hajishirzi, H. (2020). Fact or Fiction: "
-    "Verifying Scientific Claims. <i>EMNLP</i>.",
+    "Verifying Scientific Claims. <i>EMNLP</i>. Annotations: SciFact release, AllenAI.",
     "Wang, L., Yang, N., Huang, X., Yang, L., Majumder, R., Wei, F. (2024). Multilingual E5 Text Embeddings: A "
     "Technical Report. <i>arXiv:2402.05672</i>.",
 ]:
-    P(r, "ref")
+    P(ref, "ref")
 
 
 # ============================================================================= page template
@@ -458,17 +561,14 @@ def on_page(canvas, doc) -> None:
     canvas.line(M, 13 * mm, W - M, 13 * mm)
     canvas.setFont("Sans", 7.2)
     canvas.setFillColor(MUTED)
-    canvas.drawString(M, 9 * mm, "When the Re-ranker Makes Things Worse  ·  M. Hamdi")
+    canvas.drawString(M, 9 * mm, "Re-ranking: little gain, real risks  ·  M. Hamdi")
     canvas.drawRightString(W - M, 9 * mm, str(doc.page))
-    if doc.page == 1:
-        canvas.setFillColor(ACCENT)
-        canvas.rect(0, H - 6 * mm, W, 6 * mm, stroke=0, fill=1)
     canvas.restoreState()
 
 
 doc = BaseDocTemplate(str(OUT), pagesize=A4, leftMargin=M, rightMargin=M, topMargin=17 * mm, bottomMargin=19 * mm,
-                      title="When the Re-ranker Makes Things Worse", author="Mustapha HAMDI",
-                      subject="Fine-tuning a cross-encoder for medical evidence retrieval")
+                      title="Re-ranking: little gain, real risks", author="Mustapha HAMDI",
+                      subject="Cross-encoder re-ranking on top of hybrid retrieval in biomedical search")
 doc.addPageTemplates([PageTemplate(id="main", frames=[Frame(M, 19 * mm, TW, H - 36 * mm, id="f")],
                                    onPage=on_page)])
 doc.build(story)
