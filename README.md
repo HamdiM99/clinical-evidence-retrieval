@@ -6,6 +6,15 @@ decision measurable on public biomedical benchmarks.
 
 > Goal: ground clinical AI answers in validated sources (guidelines, studies) with production
 > constraints in mind: 100M+ chunks, 50+ req/s, p95 < 300 ms. See **[docs/DESIGN.md](docs/DESIGN.md)**.
+## Key findings
+
+- **No re-ranker significantly beats the hybrid first stage** (NFCorpus +0.010, p = 0.098; SciFact −0.001, p = 0.952, nDCG@10).
+- **The benchmark decides the story**: in SciFact, 38% of "relevant" pairs hold no evidence; re-ranker losses and gains sit mostly on those claims.
+- **Relevance is not stance**: one study gets the same rank for a claim and its negation.
+- **Serving is solvable**: 27 ms p95 for 20 passages on a T4 (fp16) vs ~1 s on a laptop CPU.
+
+Write-up: [Re-ranking: little gain, real risks (PDF)](docs/article/reranking-little-gain-real-risks.pdf)
+
 
 ```mermaid
 flowchart LR
